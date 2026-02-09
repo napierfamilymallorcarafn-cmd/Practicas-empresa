@@ -139,7 +139,8 @@ document.addEventListener('DOMContentLoaded', function() {
             
             headers.forEach((h, i) => {
                 if (i !== index) {
-                    h.classList.remove('sorting', 'sorting_asc', 'sorting_desc');
+                    h.classList.remove('sorting_asc', 'sorting_desc');
+                    h.classList.add('sorting');
                     sortStates[i] = 0;
                 }
             });
