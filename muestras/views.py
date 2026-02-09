@@ -2,6 +2,7 @@ from django.http import HttpResponse, FileResponse
 from .models import Muestra, Localizacion, Estudio, Envio, Documento, historial_estudios, historial_localizaciones,agenda_envio, registro_destruido, Congelador, Estante, Rack,Caja, Subposicion
 from django.template import loader
 from .forms import MuestraForm, UploadExcel, DocumentoForm, EstudioForm, Centroform, Congeladorform
+from django.db import connection
 from django.db import transaction
 from django.contrib import messages  
 from django.shortcuts import render,redirect, get_object_or_404
@@ -769,6 +770,7 @@ def cambio_posicion(request):
                 request.session['excel_file_base64']= base64.b64encode(excel_bytes).decode()
                 excel_stream = io.BytesIO(excel_bytes)
                 df = pd.read_excel(excel_stream)
+                
                 rename_columns = {
                     'Nombre Laboratorio': 'nom_lab',
                     'Congelador': 'congelador', 
@@ -779,6 +781,29 @@ def cambio_posicion(request):
                     'Caja': 'caja',
                     'Subposición': 'subposicion',
                 }
+                
+                # Validar que el Excel tenga las columnas esperadas
+                columnas_esperadas = set(rename_columns.keys())
+                columnas_existentes = set(df.columns)
+                columnas_faltantes = columnas_esperadas - columnas_existentes
+                
+                if columnas_faltantes:
+                    columnas_str = ', '.join(sorted(columnas_faltantes))
+                    return render(request, 'upload_excel_cambio_posicion.html', {'form': form, 'error': f'❌ Error de formato: El archivo Excel no contiene las siguientes columnas esperadas: {columnas_str}'})
+                
+                # Validar que el Excel no esté vacío
+                if df.empty:
+                    return render(request, 'upload_excel_cambio_posicion.html', {'form': form, 'error': '❌ Error de formato: El archivo Excel está vacío o no contiene filas de datos.'})
+                
+                # Validar columnas adicionales
+                columnas_adicionales = columnas_existentes - columnas_esperadas
+                extra_columns = False
+                columnas_adicionales_str = ''
+                if columnas_adicionales:
+                    columnas_adicionales_str = ', '.join(sorted(columnas_adicionales))
+                    request.session['columnas_adicionales'] = columnas_adicionales_str
+                    extra_columns = True
+                
                 df.rename(columns=rename_columns, inplace=True)
                 # Funciones para normalizar las columnas del excel
                 def norm(value):
@@ -892,16 +917,25 @@ def cambio_posicion(request):
                     request.session['errores'] = errores
 
                 # Mensajes de información de la subida
-                messages.info(request, f'El excel subido tiene {numero_registros} registros.')
+                upload_msgs = get_upload_messages('cambio_posicion')
+                messages.info(request, f"{upload_msgs['titulo_inicial']} {numero_registros} registros.")
                 numero_errores_bloqueantes = 0
                 for fila in errores:
                     if errores[fila]['bloqueantes']:
                         numero_errores_bloqueantes+=1
-                if numero_errores_bloqueantes == 0:
-                    messages.success(request, 'Y no tiene errores en ningún campo.')
+                
+                errores_encontrados = numero_errores_bloqueantes > 0 or extra_columns
+                
+                if numero_errores_bloqueantes == 0 and not extra_columns:
+                    messages.success(request, upload_msgs['sin_errores'])
                 else:
-                    messages.warning(request, f'Pero contiene {numero_errores_bloqueantes} filas con errores graves.')
-                return render(request, 'confirmacion_upload_cambio_posicion.html')
+                    if numero_errores_bloqueantes > 0:
+                        msg_bloqueantes = upload_msgs['con_bloqueantes'].format(count=numero_errores_bloqueantes)
+                        messages.error(request, msg_bloqueantes)
+                    if extra_columns:
+                        msg_extras = upload_msgs['columnas_extras'].format(count=len(columnas_adicionales), detalles=columnas_adicionales_str)
+                        messages.warning(request, msg_extras)
+                return render(request, 'confirmacion_upload_cambio_posicion.html', {'errores_encontrados': errores_encontrados})
             
         # Si se solicita un excel de errores, este se rellena en base a los errores detectados durante la validación 
         elif 'excel_errores' in request.POST:
@@ -997,7 +1031,30 @@ def editar_muestra(request, id_individuo, nom_lab):
     if request.method == 'POST':
         form = MuestraForm(request.POST, instance=muestra)
         if form.is_valid():
-            form.save() 
+            # Verificar si nom_lab ha sido cambiado
+            nom_lab_anterior = muestra.nom_lab
+            nom_lab_nuevo = form.cleaned_data.get('nom_lab')
+            
+            with connection.cursor() as cursor:
+                # Desactivar las restricciones de clave foránea
+                cursor.execute("SET FOREIGN_KEY_CHECKS=0")
+            
+            try:
+                with transaction.atomic():
+                    # Si nom_lab cambió y hay localizaciones, actualizar todas las referencias
+                    if nom_lab_nuevo != nom_lab_anterior and muestra.localizacion.exists():
+                        with connection.cursor() as cursor:
+                            # Actualizar todas las localizaciones con el nuevo nom_lab
+                            cursor.execute(
+                                "UPDATE muestras_localizacion SET muestra_id = %s WHERE muestra_id = %s",
+                                [nom_lab_nuevo, nom_lab_anterior]
+                            )
+                    
+                    form.save()
+            finally:
+                # Reactivar las restricciones de clave foránea
+                with connection.cursor() as cursor:
+                    cursor.execute("SET FOREIGN_KEY_CHECKS=1") 
             campos = [
                 request.POST.get("congelador"),
                 request.POST.get("estante"),
@@ -1385,7 +1442,7 @@ def upload_excel_localizaciones(request):
                 # Generar mensajes según el estado
                 if numero_errores_bloqueantes > 0:
                     msg = msg_config['con_bloqueantes'].format(count=numero_errores_bloqueantes)
-                    messages.warning(request, msg)
+                    messages.error(request, msg)
                 
                 if extra_columns:
                     num_extras = len([c.strip() for c in columnas_adicionales_str.split(',') if c.strip()])
@@ -2475,7 +2532,7 @@ def upload_excel_envios(request,centro):
                     if errores[fila]['bloqueantes']:
                         numero_errores +=1
                 if numero_errores > 0:
-                    messages.warning(request, f'Pero contiene {numero_errores} filas con errores graves.')
+                    messages.error(request, f'Pero contiene {numero_errores} filas con errores graves.')
                 else:
                     messages.success(request, 'Y no tiene errores en ningún campo.')
                 return render(request,'confirmacion_upload_envio.html') 

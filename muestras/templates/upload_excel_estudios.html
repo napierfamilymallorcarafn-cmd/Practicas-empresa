@@ -1,7 +1,7 @@
 {% extends "master.html" %}
 
 {% block title %}
-Subir archivo Excel
+Importar archivo Excel
 {% endblock %}
 {% load static %}
 {% block content %}
@@ -13,7 +13,7 @@ Subir archivo Excel
 
     <!-- CABECERA -->
     <div class="form-header">
-        <h1>📄 Subir estudios por Excel</h1>
+        <h1>📤 Importar estudios por Excel</h1>
         <p class="form-subtitle">
             Cree múltiples estudios utilizando una plantilla Excel.
         </p>
@@ -67,7 +67,7 @@ Subir archivo Excel
         {% csrf_token %}
 
         <div class="form-card">
-            <h2>📤 Subir archivo Excel</h2>
+            <h2>📤 Importar archivo Excel</h2>
 
             {% for field in form %}
                 <div class="form-field">
@@ -95,13 +95,13 @@ Subir archivo Excel
         </div>
 
         <!-- ACCIONES -->
-        <div class="form-actions">
+            <div class="form-actions">
             <button name="upload_excel"
                     id="upload-button"
                     type="submit"
                     class="accion-btn accion-primaria"
                     disabled>
-                ⬆️ Subir Excel
+                ⬆️ Importar Excel
             </button>
 
             <a href="/estudios" class="accion-btn accion-secundaria">

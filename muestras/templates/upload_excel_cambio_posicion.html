@@ -1,7 +1,7 @@
 {% extends "master.html" %}
 
 {% block title %}
-Subir archivo Excel
+Importar archivo Excel
 {% endblock %}
 {% load static %}
 {% block content %}
@@ -11,11 +11,17 @@ Subir archivo Excel
 
     <!-- CABECERA -->
     <div class="form-header">
-        <h1>📍 Cambiar posición de muestras por Excel</h1>
+        <h1>📤 Cambiar posición de muestras por Excel</h1>
         <p class="form-subtitle">
             Actualice la ubicación de múltiples muestras mediante un archivo Excel.
         </p>
     </div>
+
+    {% if error %}
+        <div class="form-card error-card" style="border-left: 4px solid #dc3545; background-color: #f8d7da;">
+            <p style="color: #721c24; margin: 0;">{{ error }}</p>
+        </div>
+    {% endif %}
 
     <!-- TARJETA INFORMATIVA -->
     <div class="form-card info-card">
@@ -47,7 +53,7 @@ Subir archivo Excel
         {% csrf_token %}
 
         <div class="form-card">
-            <h2>📤 Subir archivo Excel</h2>
+            <h2>📤 Importar archivo Excel</h2>
 
             {% for field in form %}
                 <div class="form-field">
@@ -72,11 +78,13 @@ Subir archivo Excel
         </div>
 
         <!-- ACCIONES -->
-        <div class="form-actions">
+            <div class="form-actions">
             <button name="upload_excel"
                     type="submit"
-                    class="accion-btn accion-primaria">
-                ⬆️ Subir Excel
+                    id="upload-button"
+                    class="accion-btn accion-primaria"
+                    disabled>
+                ⬆️ Importar Excel
             </button>
 
             <a href="/muestras" class="accion-btn accion-secundaria">
@@ -86,5 +94,23 @@ Subir archivo Excel
     </form>
 
 </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const fileInput = document.querySelector('input[name="excel_file"]') || document.querySelector('input[type="file"]');
+    const uploadButton = document.getElementById('upload-button');
+
+    function toggleUploadButton() {
+        if (!fileInput || !uploadButton) return;
+        uploadButton.disabled = !fileInput.files.length;
+    }
+
+    if (fileInput && uploadButton) {
+        fileInput.addEventListener('change', toggleUploadButton);
+        // set initial state
+        toggleUploadButton();
+    }
+});
+</script>
 
 {% endblock %}

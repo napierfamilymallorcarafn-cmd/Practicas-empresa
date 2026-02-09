@@ -1,7 +1,7 @@
 {% extends "master.html" %}
 
 {% block title %}
-Subir archivo Excel
+Importar archivo Excel
 {% endblock %}
 {% load static %}
 
@@ -12,7 +12,7 @@ Subir archivo Excel
 
     <!-- CABECERA -->
     <div class="form-header">
-        <h1>📤 Subir muestras por Excel</h1>
+        <h1>📤 Importar muestras por Excel</h1>
         <p class="form-subtitle">
             Carga múltiples muestras utilizando la plantilla oficial.
         </p>
@@ -68,7 +68,7 @@ Subir archivo Excel
         {% csrf_token %}
 
         <div class="form-card">
-            <h2>📤 Subir archivo Excel</h2>
+            <h2>📤 Importar archivo Excel</h2>
 
             {% for field in form %}
                 <div class="form-field">
@@ -95,9 +95,9 @@ Subir archivo Excel
         </div>
 
         <!-- BOTONES -->
-        <div class="form-actions">
+            <div class="form-actions">
             <button type="submit" id="upload-button" name="upload_excel" class="accion-btn accion-primaria" disabled>
-                ⬆️ Subir Excel
+                ⬆️ Importar Excel
             </button>
 
             <a href="/muestras" class="accion-btn accion-secundaria">

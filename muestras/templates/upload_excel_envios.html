@@ -1,7 +1,7 @@
 {% extends "master.html" %}
 
 {% block title %}
-Subir archivo Excel
+Importar archivo Excel
 {% endblock %}
 {% block content %}
 {% load static %}
@@ -9,7 +9,7 @@ Subir archivo Excel
 <link rel ="stylesheet" href="{% static 'forms.css' %}">
     <!-- CABECERA -->
     <div class="form-header">
-        <h1>📄 Subir archivo Excel de envío</h1>
+        <h1>📤 Importar archivo Excel de envío</h1>
         <p class="form-subtitle">
             Registre envíos de muestras utilizando una plantilla Excel.
         </p>
@@ -55,7 +55,7 @@ Subir archivo Excel
         {% csrf_token %}
 
         <div class="form-card">
-            <h2>📤 Subir archivo Excel</h2>
+            <h2>📤 Importar archivo Excel</h2>
 
             {% for field in form %}
                 <div class="form-field">
@@ -86,7 +86,7 @@ Subir archivo Excel
             <button name="upload_excel"
                     type="submit"
                     class="accion-btn accion-primaria">
-                ⬆️ Subir Excel
+                ⬆️ Importar Excel
             </button>
 
             <a href="/muestras" class="accion-btn accion-secundaria">

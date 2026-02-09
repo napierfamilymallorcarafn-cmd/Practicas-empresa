@@ -185,20 +185,11 @@
 }
 
 .message-item.warning {
-    color: #f57c00;
-}
-
-.message-item.success {
-    color: #388e3c;
-}
-
-.message-item.info {
-    color: #1976d2;
-}
-
-.error-message {
-    color: #d32f2f;
-    font-weight: bold;
+    color: #856404;
+    background: #fff3cd;
+    border-left: 4px solid #ffc107;
+    padding: 10px;
+    border-radius: 4px;
 }
 
 /* ===== NOTAS DE ADVERTENCIA ===== */

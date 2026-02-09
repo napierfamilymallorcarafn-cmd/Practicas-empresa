@@ -28,7 +28,7 @@ Confirmación de la subida del excel de localizaciones
     <div class="form-card messages-card">
         <h2>📢 Mensajes</h2>
         {% for message in messages %}
-            <p class="message-item">{{ message }}</p>
+            <p class="message-item {{ message.tags }}">{{ message }}</p>
         {% endfor %}
     </div>
     {% endif %}
@@ -74,9 +74,9 @@ Confirmación de la subida del excel de localizaciones
     </div>
     {% endif %}
 
-    <!-- SUBIR OTRO EXCEL (siempre visible) -->
+    <!-- IMPORTAR OTRO EXCEL (siempre visible) -->
     <div class="form-card">
-        <h2>📤 Subir otro archivo Excel</h2>
+        <h2>📤 Importar otro archivo Excel</h2>
 
         <form method="post" enctype="multipart/form-data" class="styled-form">
             {% csrf_token %}
@@ -95,7 +95,7 @@ Confirmación de la subida del excel de localizaciones
                         type="submit"
                         class="accion-btn accion-primaria"
                         disabled>
-                    ⬆️ Subir Excel
+                    ⬆️ Importar Excel
                 </button>
             </div>
         </form>

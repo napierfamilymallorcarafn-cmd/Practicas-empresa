@@ -22,7 +22,7 @@ Confirmación subida excel envios
     <div class="form-card messages-card">
         <h2>📢 Mensajes</h2>
         {% for message in messages %}
-            <p class="message-item">{{ message }}</p>
+            <p class="message-item {{ message.tags }}">{{ message }}</p>
         {% endfor %}
     </div>
     {% endif %}

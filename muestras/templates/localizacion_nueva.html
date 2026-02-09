@@ -11,7 +11,7 @@ Subir archivo Excel con las localizaciones nuevas
 
     <!-- CABECERA -->
     <div class="form-header">
-        <h1>📍 Subir localizaciones por Excel</h1>
+        <h1>📤 Importar localizaciones por Excel</h1>
         <p class="form-subtitle">
             Añada nuevas localizaciones al archivo utilizando una plantilla Excel.
         </p>
@@ -60,7 +60,7 @@ Subir archivo Excel con las localizaciones nuevas
         {% csrf_token %}
 
         <div class="form-card">
-            <h2>📤 Subir archivo Excel</h2>
+            <h2>📤 Importar archivo Excel</h2>
 
             {% for field in form %}
                 <div class="form-field">
@@ -87,9 +87,9 @@ Subir archivo Excel con las localizaciones nuevas
         </div>
 
         <!-- ACCIONES -->
-        <div class="form-actions">
+            <div class="form-actions">
             <button type="submit" id="submitBtn" class="accion-btn accion-primaria" disabled>
-                ⬆️ Subir Excel
+                ⬆️ Importar Excel
             </button>
 
             <a href="/archivo" class="accion-btn accion-secundaria">

@@ -31,7 +31,7 @@ Confirmación subida
     <div class="form-card messages-card">
         <h2>📢 Mensajes</h2>
         {% for message in messages %}
-            <p class="message-item">{{ message }}</p>
+            <p class="message-item {{ message.tags }}">{{ message }}</p>
         {% endfor %}
     </div>
     {% endif %}
@@ -83,9 +83,9 @@ Confirmación subida
 
     {% endif %}
 
-    <!-- SUBIR OTRO EXCEL -->
+    <!-- IMPORTAR OTRO EXCEL -->
     <div class="form-card">
-        <h2>📤 Subir otro archivo Excel</h2>
+        <h2>📤 Importar otro archivo Excel</h2>
 
         <form method="post" enctype="multipart/form-data" class="styled-form">
             {% csrf_token %}
@@ -98,7 +98,7 @@ Confirmación subida
 
             <div class="form-actions">
                 <button name="upload_excel" id="upload-button" type="submit" class="accion-btn accion-primaria" disabled>
-                    ⬆️ Subir Excel
+                    ⬆️ Importar Excel
                 </button>
             </div>
         </form>

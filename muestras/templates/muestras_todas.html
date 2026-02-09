@@ -97,10 +97,10 @@ Lista de Muestras
     </a>
     {% if request.session.excel_file_base64 %}
       <a href="/muestras/upload_excel" class="btn">
-        📤📄 Subir Excel de Muestras
+        📤📄 Importar Excel de Muestras
       </a>
     {% else %}
-      <a class="btn disabled" aria-disabled="true">📤📄 Subir Excel de Muestras</a>
+      <a class="btn disabled" aria-disabled="true">📤📄 Importar Excel de Muestras</a>
     {% endif %}
     {% endif %}
     {% if perms.muestras.can_change_estudios_web %}

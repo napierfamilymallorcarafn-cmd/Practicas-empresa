@@ -1,5 +1,5 @@
 """
-Archivo centralizado de configuración para uploads de Excel.
+Archivo de parametrización para uploads de Excel.
 Define mensajes, colores y estilos para muestras, estudios y localizaciones.
 """
 
@@ -26,6 +26,13 @@ UPLOAD_MESSAGES = {
         'titulo_inicial': 'El excel contiene',
         'sin_errores': 'No tiene errores en ningún campo.',
         'con_advertencias': None,  # No se usa para localizaciones
+        'con_bloqueantes': 'Contiene {count} filas con errores graves',
+        'columnas_extras': 'Contiene {count} columnas extras: {detalles}',
+    },
+    'cambio_posicion': {
+        'titulo_inicial': 'El excel contiene',
+        'sin_errores': 'No tiene errores en ningún campo.',
+        'con_advertencias': None,  # No se usa para cambio de posición
         'con_bloqueantes': 'Contiene {count} filas con errores graves',
         'columnas_extras': 'Contiene {count} columnas extras: {detalles}',
     },

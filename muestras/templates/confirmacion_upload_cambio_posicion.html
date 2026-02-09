@@ -11,23 +11,29 @@ Confirmación subida Excel
 
     <!-- CABECERA -->
     <div class="form-header">
+        {% if errores_encontrados %}
+        <h1>❌ Problemas con el cambio de posición por Excel: Fallo crítico: ERRORES DETECTADOS</h1>
+
+        {% else %}
         <h1>✅ Confirmación de cambio de posición por Excel</h1>
+
+        {% endif %}
         <p class="form-subtitle">
-            Revise los errores detectados antes de confirmar la actualización de posiciones.
+            
         </p>
     </div>
-
     <!-- MENSAJES DEL SISTEMA -->
     {% if messages %}
     <div class="form-card messages-card">
         <h2>📢 Mensajes</h2>
         {% for message in messages %}
-            <p class="message-item">{{ message }}</p>
+            <p class="message-item {{ message.tags }}">{{ message }}</p>
         {% endfor %}
     </div>
     {% endif %}
 
     <!-- INFORMACIÓN DE ERRORES -->
+    {% if errores_encontrados %}
     <div class="form-card info-card">
         <h2>ℹ️ Resultado de la validación del Excel</h2>
 
@@ -44,15 +50,6 @@ Confirmación subida Excel
             </li>
         </ul>
 
-        <p>
-            Todos los errores se detallan en la columna
-            <strong>“Errores”</strong>.
-        </p>
-
-        <p class="note warning">
-            ⚠️ El Excel de errores <strong>NO debe subirse directamente</strong>
-            para cambiar la localización de las muestras.
-        </p>
     </div>
 
     <!-- DESCARGA DE EXCEL DE ERRORES -->
@@ -67,9 +64,45 @@ Confirmación subida Excel
                 ⬇️ Descargar Excel con errores
             </button>
         </form>
+        <p style="margin-bottom: 15px; margin-top: 15px;">
+            Una vez corregidos los errores, vuelva a subir el archivo Excel.
+        </p>
+        <p class="note warning">
+            ⚠️ El Excel de errores <strong>NO debe subirse directamente</strong>
+            para crear las localizaciones.
+        </p>
+    </div>
+    {% endif %}
+
+    <!-- IMPORTAR OTRO EXCEL -->
+    <div class="form-card">
+        <h2>📤 Importar otro archivo Excel</h2>
+
+        <form method="post" enctype="multipart/form-data" class="styled-form">
+            {% csrf_token %}
+
+            <div class="form-field">
+                <label for="id_excel_file">
+                    Excel file <span class="required">*</span>
+                </label>
+                <input type="file" name="excel_file" accept=".xlsx,.xlsm,.xls" required id="id_excel_file">
+                <small class="error-text" style="display: block; color: #dc3545; margin-top: 5px;">Este campo es obligatorio.</small>
+            </div>
+
+            <div class="form-actions">
+                <button name="upload_excel"
+                        id="upload-button"
+                        type="submit"
+                        class="accion-btn accion-primaria"
+                        disabled>
+                    ⬆️ Importar Excel
+                </button>
+            </div>
+        </form>
     </div>
 
-    <!-- CONFIRMACIÓN -->
+    <!-- CONFIRMACION -->
+    {% if not errores_encontrados %}
     <div class="form-card confirm-card">
         <h2>❓ Confirmación</h2>
         <p>¿Desea aplicar los cambios de posición para las muestras válidas?</p>
@@ -90,6 +123,7 @@ Confirmación subida Excel
             </button>
         </form>
     </div>
+    {% endif %}
 
     <!-- VOLVER -->
     <div class="form-actions">
