@@ -61,7 +61,7 @@
     height: 38px;
     display: inline-flex;
     gap: 10px;
-    background-color: #709ff0;
+    background-color: #1a3d7c;
     color: white;
     padding: 7px 12px;
     margin-right: 10px;
@@ -72,6 +72,11 @@
     font-size: 13px;
     line-height: 38px;  /* <-- esto es clave */
     padding: 0 16px; /* controla solo los lados */
+    transition: background 0.2s ease;
+}
+
+.filter-buttons .btn:hover {
+    background-color: #163366;
 }
 
 .filter-buttons button {

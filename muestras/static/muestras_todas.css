@@ -48,6 +48,12 @@
     border-radius: 6px;
     font-size: 14px;
 }
+
+/* Elemento para forzar salto de línea dentro de .filter-grid (ocupa toda la fila) */
+.filter-row {
+    width: 100%;
+    height: 0; /* sin alto visible; puede usarse para separar visualmente con hr si se desea */
+}
 .filter-buttons {
     display: flex;
     flex-direction: row;
@@ -61,7 +67,7 @@
     height: 38px;
     display: inline-flex;
     gap: 10px;
-    background-color: #709ff0;
+    background-color: #1a3d7c;
     color: white;
     padding: 7px 12px;
     margin-right: 10px;
@@ -72,6 +78,11 @@
     font-size: 13px;
     line-height: 38px;  /* <-- esto es clave */
     padding: 0 16px; /* controla solo los lados */
+    transition: background 0.2s ease;
+}
+
+.filter-buttons .btn:hover {
+    background-color: #163366;
 }
 
 .filter-buttons button {

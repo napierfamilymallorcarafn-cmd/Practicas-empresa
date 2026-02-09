@@ -192,6 +192,21 @@
     border-radius: 4px;
 }
 
+/* Reglas con mayor especificidad para garantizar la visualización correcta
+   de advertencias y errores dentro de las tarjetas de mensajes. Se usan
+   !important para evitar conflictos con otros estilos globales. */
+.form-card.messages-card .message-item.warning {
+    color: #856404 !important;
+    background: #fff3cd !important;
+    border-left: 4px solid #ffc107 !important;
+}
+
+.form-card.messages-card .message-item.error {
+    color: #d32f2f !important;
+    background: #ffebee !important;
+    border-left: 4px solid #d32f2f !important;
+}
+
 /* ===== NOTAS DE ADVERTENCIA ===== */
 .note.warning {
     background: #fff3cd;

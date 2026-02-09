@@ -44,13 +44,105 @@ Lista de Muestras
     <form action="" id="filter-form">
         <div class="filter-grid">
 
-            {% for field in field_names %} 
+            <!-- GRUPO 1: Identificación básica -->
             <div class="filter-field">
-                <label>{{ field_names_readable_dict|get_item:field }}</label>
+                <label>Id del individuo</label>
+                <input type="text" name="id_individuo">
+            </div>
+            <div class="filter-field">
+                <label>Nombre dado por el laboratorio</label>
+                <input type="text" name="nom_lab">
+            </div>
+            <div class="filter-field">
+                <label>Material</label>
+                <select name="id_material" form="filter-form">
+                  <option value=""></option>
+                  <option value="null">Sin asignar</option>
+                  {% for material in opciones_materiales %}
+                    <option value="{{ material }}">{{ material }}</option>
+                  {% endfor %}
+                </select>
+            </div>
+            <div class="filter-field">
+                <label>Estudio</label>
+                <select name="estudio" form="filter-form">
+                  <option value=""></option>
+                  <option value="null">Sin estudio asignado</option>
+                  {% for estudio in opciones_estudios %}
+                    <option value="{{ estudio.id }}">{{ estudio.nombre_estudio }}</option>
+                  {% endfor %}
+                </select>
+            </div>
 
-                {% if "fecha" in field %}
-                    <input type="date" name="{{field}}">
-                {% elif "estado_actual" in field %}
+            <div class="filter-row"></div>
+
+            <!-- GRUPO 2: Cantidades -->
+            <div class="filter-field">
+                <label>Volumen actual</label>
+                <input type="text" name="volumen_actual">
+            </div>
+            <div class="filter-field">
+                <label>Unidad de volumen</label>
+                <input type="text" name="unidad_volumen">
+            </div>
+            <div class="filter-field">
+                <label>Concentración actual</label>
+                <input type="text" name="concentracion_actual">
+            </div>
+            <div class="filter-field">
+                <label>Unidad de concentración</label>
+                <input type="text" name="unidad_concentracion">
+            </div>
+            <div class="filter-field">
+                <label>Masa actual</label>
+                <input type="text" name="masa_actual">
+            </div>
+            <div class="filter-field">
+                <label>Unidad de masa</label>
+                <input type="text" name="unidad_masa">
+            </div>
+
+            <div class="filter-row"></div>
+
+            <!-- GRUPO 3: Fechas -->
+            <div class="filter-field">
+                <label>Fecha de extracción</label>
+                <input type="date" name="fecha_extraccion">
+            </div>
+            <div class="filter-field">
+                <label>Fecha de llegada</label>
+                <input type="date" name="fecha_llegada">
+            </div>
+
+            <div class="filter-row"></div>
+
+            <!-- GRUPO 4: Procedencia y Estado -->
+            <div class="filter-field">
+                <label>Estado inicial</label>
+                <input type="text" name="estado_inicial">
+            </div>
+            <div class="filter-field">
+                <label>Centro de procedencia</label>
+                <select name="centro_procedencia" form="filter-form">
+                  <option value=""></option>
+                  <option value="null">Sin asignar</option>
+                  {% for centro in opciones_centros %}
+                    <option value="{{ centro }}">{{ centro }}</option>
+                  {% endfor %}
+                </select>
+            </div>
+            <div class="filter-field">
+                <label>Lugar de procedencia</label>
+                <select name="lugar_procedencia" form="filter-form">
+                  <option value=""></option>
+                  <option value="null">Sin asignar</option>
+                  {% for lugar in opciones_lugares %}
+                    <option value="{{ lugar }}">{{ lugar }}</option>
+                  {% endfor %}
+                </select>
+            </div>
+            <div class="filter-field">
+                <label>Estado actual</label>
                 <select name="estado_actual" form="filter-form">
                   <option value=""></option>
                   <option value="DISP">Disponible</option>
@@ -58,19 +150,60 @@ Lista de Muestras
                   <option value="ENV">Enviada</option>
                   <option value="Destruida">Destruida</option>
                 </select>
-                {% else %}
-                    <input type="text" name="{{field}}">
-                {% endif %}
             </div>
-            {% endfor %}
 
+            <div class="filter-row"></div>
+
+            <!-- GRUPO 5: Localización -->
             <div class="filter-field">
-                <label>Estudio</label>
-                <input type="text" name="estudio">
+                <label>Congelador</label>
+                <select name="congelador" form="filter-form">
+                  <option value=""></option>
+                  <option value="null">Sin asignar</option>
+                  {% for congelador in opciones_congeladores %}
+                    <option value="{{ congelador }}">{{ congelador }}</option>
+                  {% endfor %}
+                </select>
             </div>
             <div class="filter-field">
-            
+                <label>Estante</label>
+                <select name="estante" form="filter-form">
+                  <option value=""></option>
+                  <option value="null">Sin asignar</option>
+                  {% for estante in opciones_estantes %}
+                    <option value="{{ estante }}">{{ estante }}</option>
+                  {% endfor %}
+                </select>
             </div>
+            <div class="filter-field">
+                <label>Rack</label>
+                <select name="rack" form="filter-form">
+                  <option value=""></option>
+                  <option value="null">Sin asignar</option>
+                  {% for rack in opciones_racks %}
+                    <option value="{{ rack }}">{{ rack }}</option>
+                  {% endfor %}
+                </select>
+            </div>
+            <div class="filter-field">
+                <label>Caja</label>
+                <select name="caja" form="filter-form">
+                  <option value=""></option>
+                  <option value="null">Sin asignar</option>
+                  {% for caja in opciones_cajas %}
+                    <option value="{{ caja }}">{{ caja }}</option>
+                  {% endfor %}
+                </select>
+            </div>
+
+            <div class="filter-row"></div>
+
+            <!-- GRUPO 6: Observaciones -->
+            <div class="filter-field" style="width:100%;">
+                <label>Observaciones</label>
+                <input type="text" name="observaciones">
+            </div>
+
         </div>
 
         <div class="filter-buttons">
@@ -84,7 +217,7 @@ Lista de Muestras
     </form>
 </div>
 </div>
-</div>
+
 
 <div class="collapsible">
     <button class="collapsible-header">⚙️ Acciones</button>
@@ -139,7 +272,7 @@ Lista de Muestras
     <input type="button" value="☐ Deseleccionar" onclick="seleccionar_todo(false)" class="btn btn-secondary">
     </div>
  </div>
- </div>
+ 
 </div>
 
 <form action="{% url 'acciones_post' %}" method="post" id="acciones-form">
@@ -162,6 +295,9 @@ Lista de Muestras
 </form>
 -->
 
+<div style="margin: 20px 0; text-align: right;">
+  <strong>Resultados encontrados:</strong> <span style="font-size: 1.0em; color: #007bff; margin-left: 0;">{{ contador_muestras }}</span> muestra{{ contador_muestras|pluralize }}
+</div>
 
 <div class="table-container">
   <table class="styled-table">

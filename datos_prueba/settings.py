@@ -157,3 +157,6 @@ LOGOUT_REDIRECT_URL = '/'
 
 MEDIA_ROOT = os.path.join(BASE_DIR,'media')
 MEDIA_URL = '/media/'
+
+# Aumentar el límite de parámetros POST para permitir borrar muchas muestras a la vez
+DATA_UPLOAD_MAX_NUMBER_FIELDS = None

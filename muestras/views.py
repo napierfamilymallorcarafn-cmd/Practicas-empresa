@@ -43,15 +43,61 @@ def muestras_todas(request):
     field_names = [f.name for f in Muestra._meta.local_fields if f.name not in ('id','estudio')]
     field_names_readable = ['Id del individuo','Nombre dado por el laboratorio','Material','Volumen actual','Unidad de volumen','Concentración actual','Unidad de concentración','Masa actual','Unidad de masa','Fecha de extracción','Fecha de llegada','Observaciones','Estado inicial','Centro de procedencia','Lugar de procedencia','Estado actual']
     field_names_readable_dict = {k:v for (k,v) in zip(field_names,field_names_readable)}
-    for field in field_names:
-        if request.GET.get(field):
-            filter_kwargs = {f"{field}__icontains": request.GET[field]}
-            muestras = muestras.filter(**filter_kwargs)
     
-    # Filtrado de las muestras en base al estudio al que pertenecen
+    # Filtrado de campos de texto normales
+    for field in field_names:
+        val = request.GET.get(field)
+        if val:
+            # Para campos que son dropdowns, usar búsqueda exacta
+            if field in ['id_material', 'centro_procedencia', 'lugar_procedencia']:
+                if val == 'null':
+                    # Incluir tanto NULL como cadenas vacías
+                    muestras = muestras.filter(
+                        Q(**{f"{field}__isnull": True}) | Q(**{f"{field}": ""})
+                    )
+                else:
+                    muestras = muestras.filter(**{f"{field}": val})
+            else:
+                muestras = muestras.filter(**{f"{field}__icontains": val})
+    
+    # Filtrado de las muestras en base al estudio específico (por ID)
     if request.GET.get('estudio'):
-        filtro_estudio = request.GET['estudio']
-        muestras = muestras.filter(estudio__nombre_estudio__icontains=filtro_estudio)
+        estudio_id = request.GET['estudio']
+        if estudio_id:  # Solo si tiene valor
+            if estudio_id == 'null':  # Si selecciona "Sin estudio"
+                muestras = muestras.filter(estudio__isnull=True)
+            else:
+                muestras = muestras.filter(estudio__id=estudio_id)
+    
+    # Filtrado por localizaciones
+    if request.GET.get('congelador'):
+        congelador_val = request.GET['congelador']
+        if congelador_val == 'null':
+            muestras = muestras.filter(subposicion__isnull=True)
+        else:
+            muestras = muestras.filter(subposicion__caja__rack__estante__congelador__congelador__iexact=congelador_val)
+    if request.GET.get('estante'):
+        estante_val = request.GET['estante']
+        if estante_val == 'null':
+            muestras = muestras.filter(subposicion__isnull=True)
+        else:
+            try:
+                estante_num = int(estante_val)
+                muestras = muestras.filter(subposicion__caja__rack__estante__numero=estante_num)
+            except (ValueError, TypeError):
+                pass
+    if request.GET.get('rack'):
+        rack_val = request.GET['rack']
+        if rack_val == 'null':
+            muestras = muestras.filter(subposicion__isnull=True)
+        else:
+            muestras = muestras.filter(subposicion__caja__rack__numero__iexact=rack_val)
+    if request.GET.get('caja'):
+        caja_val = request.GET['caja']
+        if caja_val == 'null':
+            muestras = muestras.filter(subposicion__isnull=True)
+        else:
+            muestras = muestras.filter(subposicion__caja__numero__iexact=caja_val)
 
     # Filtrado de las muestras a mostrar si el perfil es de un investigador, mostrando solo las asociadas a sus estudios
     if request.user.groups.filter(name='Investigadores'):
@@ -118,12 +164,32 @@ def muestras_todas(request):
     
         wb.save(response)
         return response
+    
+    # Obtener opciones para los dropdowns
+    opciones_materiales = Muestra.objects.values_list('id_material', flat=True).distinct().exclude(id_material__isnull=True).exclude(id_material='')
+    opciones_centros = Muestra.objects.values_list('centro_procedencia', flat=True).distinct().exclude(centro_procedencia__isnull=True).exclude(centro_procedencia='')
+    opciones_lugares = Muestra.objects.values_list('lugar_procedencia', flat=True).distinct().exclude(lugar_procedencia__isnull=True).exclude(lugar_procedencia='')
+    opciones_estudios = Estudio.objects.all()
+    opciones_congeladores = Congelador.objects.values_list('congelador', flat=True).distinct()
+    opciones_estantes = Estante.objects.values_list('numero', flat=True).distinct().order_by('numero')
+    opciones_racks = Rack.objects.values_list('numero', flat=True).distinct().order_by('numero')
+    opciones_cajas = Caja.objects.values_list('numero', flat=True).distinct().order_by('numero')
+    
     # Cargar el template y pasar las muestras y los campos de filtro al mismo
     template = loader.get_template('muestras_todas.html')
     context = {    
         'muestras': muestras,
+        'contador_muestras': muestras.count(),
         'field_names': field_names,
-        'field_names_readable_dict': field_names_readable_dict
+        'field_names_readable_dict': field_names_readable_dict,
+        'opciones_materiales': opciones_materiales,
+        'opciones_centros': opciones_centros,
+        'opciones_lugares': opciones_lugares,
+        'opciones_estudios': opciones_estudios,
+        'opciones_congeladores': opciones_congeladores,
+        'opciones_estantes': opciones_estantes,
+        'opciones_racks': opciones_racks,
+        'opciones_cajas': opciones_cajas,
     }
     return HttpResponse(template.render(context, request))
 @login_required
