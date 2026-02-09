@@ -11,12 +11,8 @@ Repositorio de documentación del estudio {{estudio.id_estudio}}
 
     <!-- BARRA DE ACCIONES -->
     <div class="acciones-estudios">
-        <a href="/" class="accion-btn accion-secundaria">
-            ⬅ Volver a muestras
-        </a>
-
         <a href="/estudios" class="accion-btn accion-secundaria">
-            📚 Volver a estudios
+            ↩ Volver a estudios
         </a>
 
         <a href="/estudios/{{ id }}/subir" class="accion-btn accion-primaria">
@@ -55,16 +51,16 @@ Repositorio de documentación del estudio {{estudio.id_estudio}}
                         {% endfor %}
                     </select>
                 </div>
+            </div>
 
             <div class="filter-buttons">
-                <button type="submit" class="accion-btn accion-secundaria">
+                <button type="submit" class="btn btn-primary">
                     🔎 Filtrar
                 </button>
 
-                <a href="/estudios/{{ id }}" class="accion-btn accion-secundaria">
+                <a href="/estudios/{{ id }}" class="btn btn-secondary">
                     ✖ Eliminar filtros
                 </a>
-            </div>
             </div>
         </form>
         </div>
@@ -102,6 +98,84 @@ document.addEventListener("DOMContentLoaded", function() {
     checkboxes.forEach(checkbox => {
         checkbox.addEventListener('change', toggleDeleteButton);
     });
+});
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const table = document.querySelector('.styled-table');
+    if (!table) return;
+
+    const thead = table.querySelector('thead');
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+
+    // Crear contenedor para el buscador
+    const searchContainer = document.createElement('div');
+    searchContainer.style.cssText = 'margin-bottom: 15px; display: flex; align-items: center; gap: 10px;';
+    searchContainer.innerHTML = '<label style="font-weight: 500; color: #333;">Buscar:</label><input type="text" id="table-search" placeholder="Escribe para buscar..." style="padding: 8px 12px; border: 1px solid #dfe3e6; border-radius: 6px; font-size: 14px; width: 300px;">';
+    
+    table.parentNode.insertBefore(searchContainer, table);
+    
+    const searchInput = document.getElementById('table-search');
+    searchInput.addEventListener('keyup', function() {
+        const filter = this.value.toLowerCase();
+        rows.forEach(row => {
+            const text = row.textContent.toLowerCase();
+            row.style.display = text.includes(filter) ? '' : 'none';
+        });
+    });
+
+    const headers = thead.querySelectorAll('th');
+    const sortStates = {};
+    const dateKeywords = ['fecha', 'date', 'subida', 'upload'];
+
+    headers.forEach((header, index) => {
+        header.style.userSelect = 'none';
+        const originalText = header.textContent.trim();
+        sortStates[index] = 0;
+
+        // Si es la columna de checkbox, no añadir listener
+        if (originalText === '✓' || header.querySelector('input')) {
+            header.style.cursor = 'default';
+            return;
+        }
+
+        header.style.cursor = 'pointer';
+
+        header.addEventListener('click', function() {
+            if (sortStates[index] === 0) {
+                sortStates[index] = 1;
+            } else {
+                sortStates[index] = sortStates[index] === 1 ? 2 : 1;
+            }
+
+            headers.forEach((h, i) => {
+                if (i !== index) {
+                    sortStates[i] = 0;
+                }
+            });
+
+            sortTable(index, sortStates[index]);
+        });
+    });
+
+    function sortTable(colIndex, direction) {
+        const sorted = [...rows].sort((a, b) => {
+            const aCell = a.cells[colIndex];
+            const bCell = b.cells[colIndex];
+            const aVal = aCell ? aCell.textContent.trim() : '';
+            const bVal = bCell ? bCell.textContent.trim() : '';
+            const aNum = parseFloat(aVal);
+            const bNum = parseFloat(bVal);
+            if (!isNaN(aNum) && !isNaN(bNum)) {
+                return direction === 1 ? aNum - bNum : bNum - aNum;
+            }
+            return direction === 1 ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+        });
+        tbody.innerHTML = '';
+        sorted.forEach(row => tbody.appendChild(row));
+    }
 });
 </script>
 

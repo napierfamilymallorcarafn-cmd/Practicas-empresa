@@ -10,7 +10,7 @@ from django.dispatch import receiver
 # Archivo que define las tablas(modelos) de la base de datos de la aplicación 
 class Muestra(models.Model):
     # Campos del modelo Muestra
-    id_individuo = models.CharField(max_length=20)
+    id_individuo = models.CharField(max_length=20, blank=True, null=True)
     nom_lab = models.CharField(max_length=100, unique=True, help_text="Nombre único de la muestra asignado por el laboratorio")
     id_material = models.CharField(max_length=20,blank=True, null=True, help_text="Material de la muestra")
     volumen_actual = models.FloatField(blank=True, null=True)

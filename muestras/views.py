@@ -49,7 +49,7 @@ def muestras_todas(request):
         val = request.GET.get(field)
         if val:
             # Para campos que son dropdowns, usar búsqueda exacta
-            if field in ['id_material', 'centro_procedencia', 'lugar_procedencia']:
+            if field in ['id_material', 'centro_procedencia', 'lugar_procedencia', 'estado_actual']:
                 if val == 'null':
                     # Incluir tanto NULL como cadenas vacías
                     muestras = muestras.filter(
@@ -323,22 +323,42 @@ def upload_excel(request):
             filas_validas = request.session.get('filas_validas',[])
             with transaction.atomic():
                 for datos in filas_validas:
-                    subposicion = Subposicion.objects.select_for_update().get(
-                        id=datos["subposicion_id"]
-                    )
-                    if datos["fecha_extraccion"]:
-                        fecha_extraccion =  date.fromisoformat(datos["fecha_extraccion"])
-                    else:
-                        fecha_extraccion = None
-                    if datos["fecha_llegada"]:
-                        fecha_llegada = date.fromisoformat(datos["fecha_llegada"])
-                    else:
-                        fecha_llegada = None
+                    # Antes de crear, eliminar del dict los campos marcados como advertencia
+                    errores_sesion = request.session.get('errores', {})
+                    fila_num = datos.get('fila')
+                    advertencias = []
+                    if fila_num:
+                        advertencias = errores_sesion.get(fila_num, {}).get('advertencias', [])
+                    # Si hay advertencias relacionadas con campos, no guardarlas
+                    for warn in advertencias:
+                        if warn == 'fecha_incoherente':
+                            datos['fecha_extraccion'] = None
+                            datos['fecha_llegada'] = None
+                        elif ':' in warn:
+                            _, campo = warn.split(':', 1)
+                            if campo in datos:
+                                datos[campo] = None
+
+                    # Procesar fechas de forma robusta (si no fueron eliminadas por advertencias)
+                    fecha_extraccion = None
+                    fecha_llegada = None
+                    if datos.get("fecha_extraccion"):
+                        try:
+                            fecha_extraccion = date.fromisoformat(datos["fecha_extraccion"])
+                        except Exception:
+                            fecha_extraccion = None
+                    if datos.get("fecha_llegada"):
+                        try:
+                            fecha_llegada = date.fromisoformat(datos["fecha_llegada"])
+                        except Exception:
+                            fecha_llegada = None
                     estudio = None
-                    if datos["estudio"]:
+                    if datos.get("estudio"):
                         estudio = Estudio.objects.get(id = datos["estudio"])
+
+                    # Crear la muestra (id_individuo puede ser None ahora)
                     muestra = Muestra.objects.create(
-                        id_individuo=datos["id_individuo"],
+                        id_individuo=datos.get("id_individuo"),
                         nom_lab=datos["nom_lab"],
                         id_material=datos.get("id_material"),
                         volumen_actual=datos.get("volumen_actual"),
@@ -357,27 +377,38 @@ def upload_excel(request):
                         estudio=estudio,
                     )
 
-                    localizacion =Localizacion.objects.create(
-                        muestra=muestra,
-                        congelador=subposicion.caja.rack.estante.congelador.congelador,
-                        estante=subposicion.caja.rack.estante.numero,
-                        rack=subposicion.caja.rack.numero,
-                        caja=subposicion.caja.numero,
-                        subposicion=subposicion.numero,
-                    )
+                    # Si se proporcionó una subposición válida, asignarla
+                    subposicion_id = datos.get("subposicion_id")
+                    if subposicion_id:
+                        try:
+                            subposicion = Subposicion.objects.select_for_update().get(id=subposicion_id)
+                        except Subposicion.DoesNotExist:
+                            # Esta situación no debería ocurrir porque ya validamos antes, pero la manejamos defensivamente
+                            subposicion = None
 
-                    subposicion.vacia = False
-                    subposicion.muestra = muestra
-                    subposicion.save()
+                        if subposicion:
+                            localizacion = Localizacion.objects.create(
+                                muestra=muestra,
+                                congelador=subposicion.caja.rack.estante.congelador.congelador,
+                                estante=subposicion.caja.rack.estante.numero,
+                                rack=subposicion.caja.rack.numero,
+                                caja=subposicion.caja.numero,
+                                subposicion=subposicion.numero,
+                            )
 
-                    historial_localizaciones.objects.create(
-                    muestra=muestra,
-                    localizacion=localizacion,
-                    fecha_asignacion=timezone.now(),
-                    usuario_asignacion=request.user
-                )
+                            subposicion.vacia = False
+                            subposicion.muestra = muestra
+                            subposicion.save()
 
-                    if datos["estudio"]:
+                            historial_localizaciones.objects.create(
+                                muestra=muestra,
+                                localizacion=localizacion,
+                                fecha_asignacion=timezone.now(),
+                                usuario_asignacion=request.user
+                            )
+
+                    # Registrar historial de estudios si aplica
+                    if datos.get("estudio"):
                         historial_estudios.objects.create(
                             muestra=muestra,
                             estudio=estudio,
@@ -453,8 +484,8 @@ def upload_excel(request):
                 nom_lab_excel = set()
                 numero_registros = 0
                 
-                # Definir campos obligatorios para una muestra
-                obligatorios = ["id_individuo", "nom_lab"]
+                # Definir campos obligatorios para una muestra (solo nombre de laboratorio)
+                obligatorios = ["nom_lab"]
 
                 cache = {
                     'subposiciones': {
@@ -528,13 +559,26 @@ def upload_excel(request):
                             except (TypeError, ValueError):
                                 errores[fila]["bloqueantes"].append(f"formato_incorrecto:{campo}")
                         
+                    # Validar y normalizar fechas (esperado formato día-mes-año o fecha Excel)
                     for campo in ['fecha_extraccion', 'fecha_llegada']:
                         if datos[campo] != None:
                             try:
-                                fecha = pd.to_datetime(datos[campo])
+                                # Forzar interpretación día/mes/año cuando sea una cadena
+                                fecha = pd.to_datetime(datos[campo], dayfirst=True, errors='raise')
                                 datos[campo] = fecha.date().isoformat()
                             except Exception:
-                                errores[fila]["bloqueantes"].append(f"formato_incorrecto:{campo}")
+                                errores[fila]["bloqueantes"].append(f"fecha_invalida:{campo}")
+
+                    # Si ambas fechas están presentes, comprobar coherencia: llegada >= extracción
+                    if datos.get('fecha_extraccion') and datos.get('fecha_llegada'):
+                        try:
+                            fe_extr = date.fromisoformat(datos['fecha_extraccion'])
+                            fe_lleg = date.fromisoformat(datos['fecha_llegada'])
+                            if fe_lleg < fe_extr:
+                                errores[fila]["bloqueantes"].append('fecha_incoherente')
+                        except Exception:
+                            # Si por alguna razón no se pueden convertir, marcar como fecha inválida y bloquear
+                            errores[fila]["bloqueantes"].append('fecha_invalida:fecha_extraccion')
                                 
                     # Comprobar si hay duplicados entre las muestras dentro del excel o en la base de datos
                     nom_lab = datos["nom_lab"]
@@ -561,41 +605,62 @@ def upload_excel(request):
                             errores[fila]["advertencias"].append("estudio_no_existe")
                             datos["estudio"] = None
 
-                    # Comprobar si la localización está ocupada o existe
-                    key = (
-                        datos["congelador"],
-                        datos["estante"],
-                        datos["rack"],
-                        datos["caja"],
-                        datos["subposicion"]
-                    )
+                    # Comprobar si la localización está ocupada o existe únicamente si se han proporcionado datos de posición
+                    if datos.get("congelador") or datos.get("estante") or datos.get("rack") or datos.get("caja") or datos.get("subposicion"):
+                        key = (
+                            datos["congelador"],
+                            datos["estante"],
+                            datos["rack"],
+                            datos["caja"],
+                            datos["subposicion"]
+                        )
 
-                    subposicion = cache["subposiciones"].get(key)
+                        subposicion = cache["subposiciones"].get(key)
 
-                    if not subposicion:
-                        errores[fila]["bloqueantes"].append("localizacion_no_existe")
-                    elif not subposicion.vacia:
-                        errores[fila]["bloqueantes"].append("localizacion_ocupada")
+                        if not subposicion:
+                            errores[fila]["bloqueantes"].append("localizacion_no_existe")
+                        elif not subposicion.vacia:
+                            errores[fila]["bloqueantes"].append("localizacion_ocupada")
+                        else:
+                            datos["subposicion_id"] = subposicion.id
                     else:
-                        datos["subposicion_id"] = subposicion.id
+                        # No se proporcionó posición; la muestra quedará sin localización asignada
+                        datos["subposicion_id"] = None
 
-                    # Detectar campos opcionales vacios
-                    opcionales = ["id_material",
-                                  "unidad_volumen",
-                                  "unidad_masa",
-                                  'unidad_concentracion',
-                                  "estado_inicial",
-                                  "estudio",
-                                  "estado_actual",
-                                  "observaciones", 
-                                  "centro_procedencia", 
-                                  "lugar_procedencia", 'volumen_actual', 'concentracion_actual', 'masa_actual','fecha_extraccion', 'fecha_llegada']
+                    # Detectar campos opcionales vacios (solo 'nom_lab' es obligatorio)
+                    opcionales = [
+                        'id_individuo',
+                        'id_material',
+                        'volumen_actual',
+                        'unidad_volumen',
+                        'concentracion_actual',
+                        'unidad_concentracion',
+                        'masa_actual',
+                        'unidad_masa',
+                        'fecha_extraccion',
+                        'fecha_llegada',
+                        'observaciones',
+                        'estado_inicial',
+                        'estado_actual',
+                        'estudio',
+                        'centro_procedencia',
+                        'lugar_procedencia',
+                        # Posición (tratar como opcional; si se proporcionan, se validan arriba)
+                        'congelador',
+                        'estante',
+                        'posicion_rack_estante',
+                        'rack',
+                        'posicion_caja_rack',
+                        'caja',
+                        'subposicion'
+                    ]
                     for campo in opcionales:
                         if datos.get(campo) is None:
                             errores[fila]["advertencias"].append(f"campo_vacio:{campo}")
 
                     # Registrar filas validas
                     if not errores[fila]["bloqueantes"]:
+                        datos['fila'] = fila
                         filas_validas.append(datos)
                 
                 # Guardar en la sesión las filas validas y los errores detectados
@@ -652,6 +717,8 @@ def upload_excel(request):
                     MENSAJES_ERROR = {
                         "campo_obligatorio_vacio": "Campo obligatorio vacío",
                         "formato_incorrecto": "Formato incorrecto",
+                        "fecha_invalida": "Fecha inválida (Formato correcto: DD-MM-AAAA)",
+                        "fecha_incoherente": "Fecha llegada anterior a fecha de extracción",
                         "muestra_duplicada_bd": "La muestra ya existe en la base de datos",
                         "muestra_duplicada_excel": "Muestra duplicada dentro del Excel",
                         "localizacion_ocupada": "La subposición ya está ocupada",
@@ -977,6 +1044,7 @@ def cambio_posicion(request):
                     
                     # Registrar filas validas
                     if not errores[fila]["bloqueantes"]:
+                        datos['fila'] = fila
                         filas_validas.append(datos)
                 
                     request.session['filas_validas']=filas_validas
@@ -1020,7 +1088,8 @@ def cambio_posicion(request):
                         "muestra_no_existe_bd": "La muestra no existe en la base de datos",
                         "muestra_duplicada_excel": "Muestra duplicada dentro del Excel",
                         "localizacion_ocupada": "La subposición ya está ocupada",
-                        "localizacion_no_existe": "La localización no existe"
+                        "localizacion_no_existe": "La localización no existe",
+                        "fecha_invalida": "Fecha inválida (Formato correcto: DD-MM-AAAA)"
                     }
                     # Diccionario de columnas del excel
                     columnas_excel = {}
@@ -1541,6 +1610,7 @@ def upload_excel_localizaciones(request):
                 "localizacion_duplicada": "La localización ya existe en la base de datos",
                 "subposicion_duplicada_excel": "La subposición aparece duplicada en el Excel",
                 "formato_incorrecto": "Formato incorrecto (debe ser entero positivo)",
+                "fecha_invalida": "Fecha inválida (Formato correcto: DD-MM-AAAA)",
                 "caja_inconsistente": "Conflicto de caja en la misma posición",
                 "rack_inconsistente": "Conflicto de rack en la misma posición",
                 "posicion_rack_ocupada": "La posición del rack ya está ocupada por otro rack",
@@ -2586,6 +2656,7 @@ def upload_excel_envios(request,centro):
                     
                     # Registrar filas validas
                     if not errores[fila]["bloqueantes"]:
+                        datos['fila'] = fila
                         filas_validas.append(datos)
                 
                 request.session['filas_validas']=filas_validas
@@ -2617,6 +2688,7 @@ def upload_excel_envios(request,centro):
                 MENSAJES_ERROR = {
                     "campo_obligatorio_vacio": "Campo obligatorio vacío",
                     "formato_incorrecto": "Formato incorrecto de un campo",
+                    "fecha_invalida": "Fecha inválida (Formato correcto: DD-MM-AAAA)",
                     "muestra_inexistente": "La muestra no existe en la base de datos",
                     "muestra_duplicada_excel": "Muestra duplicada dentro del Excel",
                     "volumen_alto": "La muestra no tiene suficiente volumen para el envio",

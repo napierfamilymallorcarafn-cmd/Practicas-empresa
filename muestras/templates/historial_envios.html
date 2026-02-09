@@ -107,4 +107,71 @@ Historial de envios
 
 </div>
 
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const table = document.querySelector('.styled-table');
+    if (!table) return;
+    
+    const thead = table.querySelector('thead');
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    
+    const searchContainer = document.createElement('div');
+    searchContainer.style.cssText = 'margin-bottom: 15px; display: flex; align-items: center; gap: 10px;';
+    searchContainer.innerHTML = '<label style="font-weight: 500; color: #333;">Buscar:</label><input type="text" id="table-search" placeholder="Escribe para filtrar..." style="padding: 8px 12px; border: 1px solid #dfe3e6; border-radius: 6px; font-size: 14px; width: 250px;">';
+    
+    table.parentNode.insertBefore(searchContainer, table);
+    
+    const searchInput = document.getElementById('table-search');
+    searchInput.addEventListener('keyup', function() {
+        const filter = this.value.toLowerCase();
+        rows.forEach(row => {
+            const text = row.textContent.toLowerCase();
+            row.style.display = text.includes(filter) ? '' : 'none';
+        });
+    });
+    
+    const headers = thead.querySelectorAll('th');
+    const sortStates = {};
+    const dateKeywords = ['fecha', 'date', 'envio'];
+    
+    headers.forEach((header, index) => {
+        header.style.cursor = 'pointer';
+        header.style.userSelect = 'none';
+        sortStates[index] = 0;
+
+        header.addEventListener('click', function() {
+            if (sortStates[index] === 0) {
+                sortStates[index] = 1;
+            } else {
+                sortStates[index] = sortStates[index] === 1 ? 2 : 1;
+            }
+
+            headers.forEach((h, i) => {
+                if (i !== index) {
+                    sortStates[i] = 0;
+                }
+            });
+
+            sortTable(index, sortStates[index]);
+        });
+    });
+    
+    function sortTable(colIndex, direction) {
+        const sorted = [...rows].sort((a, b) => {
+            const aVal = a.cells[colIndex].textContent.trim();
+            const bVal = b.cells[colIndex].textContent.trim();
+            const aNum = parseFloat(aVal);
+            const bNum = parseFloat(bVal);
+            if (!isNaN(aNum) && !isNaN(bNum)) {
+                return direction === 1 ? aNum - bNum : bNum - aNum;
+            }
+            return direction === 1 ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+        });
+        tbody.innerHTML = '';
+        sorted.forEach(row => tbody.appendChild(row));
+    }
+});
+</script>
+
 {% endblock %}

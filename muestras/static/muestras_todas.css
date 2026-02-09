@@ -327,5 +327,20 @@
     row-gap: 6px;
 }
 
+/* Table header arrows via CSS pseudo-element - always show ↕ */
+.styled-table th {
+    position: relative;
+    padding-right: 22px; /* space for the pseudo arrow */
+}
+.styled-table th::after {
+    content: "↕";
+    color: #999;
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.9em;
+}
+
 
 
