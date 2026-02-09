@@ -14,7 +14,7 @@ Confirmación subida
         {% if numero_errores_bloqueantes > 0 %}
         <h1>❌ Problemas con la subida del Excel de de muestras: Fallo crítico: ERRORES DETECTADOS</h1>
 
-        {% elif numero_errores_advertencia > 0 %}
+        {% elif numero_errores_advertencia > 0 or tiene_columnas_extras %}
         <h1>⚠️ Confirmación de subida de Excel de muestras: Advertencia</h1>
 
         {% else %}
@@ -37,7 +37,7 @@ Confirmación subida
     {% endif %}
 
     <!-- EXPLICACIÓN DE ERRORES -->
-    {% if numero_errores_bloqueantes > 0 or numero_errores_advertencia > 0 %}
+    {% if numero_errores_bloqueantes > 0 or numero_errores_advertencia > 0 or tiene_columnas_extras %}
     <div class="form-card info-card">
         <h2>ℹ️ Resultado de la validación del Excel</h2>
 
@@ -56,6 +56,12 @@ Confirmación subida
                 <strong style="color:#ffa000;">Filas en amarillo</strong>:
                 campos no obligatorios vacíos, marcados con un comentario. Estudio no existe en la base de datos. 
             </li>
+            {% if tiene_columnas_extras %}
+            <li>
+                <strong style="color:#1976d2;">Columnas extra</strong>:
+                El archivo contiene {{ numero_columnas_extras }} columna(s) adicional(es) que no están en el formato esperado: {{ columnas_extras_str }}
+            </li>
+            {% endif %}
         </ul>
        
     </div>

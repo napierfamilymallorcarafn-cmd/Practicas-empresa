@@ -373,7 +373,7 @@ def upload_excel(request):
                         estado_inicial=datos.get("estado_inicial"),
                         centro_procedencia=datos.get("centro_procedencia"),
                         lugar_procedencia=datos.get("lugar_procedencia"),
-                        estado_actual="DISP",
+                        estado_actual=datos.get("estado_actual") or None,
                         estudio=estudio,
                     )
 
@@ -426,11 +426,25 @@ def upload_excel(request):
             if form.is_valid():
                 # Leer excel y preparar columnas 
                 excel_file = request.FILES['excel_file']
+                # Validar que sea un archivo Excel
+                if not excel_file.name.lower().endswith(('.xlsx', '.xls', '.xlsm')):
+                    return render(request, 'upload_excel.html', {'form': form, 'error': '❌ Error de formato: El archivo debe ser un Excel (.xlsx, .xls o .xlsm).'})
+                
                 excel_bytes = excel_file.read()
                 request.session['excel_file_name'] = excel_file.name
                 request.session['excel_file_base64']= base64.b64encode(excel_bytes).decode()
                 excel_stream = io.BytesIO(excel_bytes)
-                df = pd.read_excel(excel_stream)
+                
+                # Intentar leer el archivo Excel
+                try:
+                    df = pd.read_excel(excel_stream)
+                except Exception as e:
+                    return render(request, 'upload_excel.html', {'form': form, 'error': f'❌ Error al leer el archivo Excel: {str(e)}'})
+                
+                # Validar que tenga al menos una fila de datos
+                if df.empty or len(df) == 0:
+                    return render(request, 'upload_excel.html', {'form': form, 'error': '❌ Error de formato: El archivo Excel está vacío o no contiene filas de datos.'})
+                
                 rename_columns = {
                     'ID Individuo': 'id_individuo', 
                     'Nombre Laboratorio': 'nom_lab',
@@ -457,6 +471,19 @@ def upload_excel(request):
                     'Subposición': 'subposicion',
                     'Estudio':'estudio'
                 }
+                # Validar columnas
+                columnas_esperadas = set(rename_columns.keys())
+                columnas_existentes = set(df.columns)
+                columnas_faltantes = columnas_esperadas - columnas_existentes
+                if columnas_faltantes:
+                    columnas_str = ', '.join(sorted(columnas_faltantes))
+                    return render(request, 'upload_excel.html', {'form': form, 'error': f'❌ Error de formato: El archivo Excel no contiene las siguientes columnas esperadas: {columnas_str}'})
+                
+                columnas_adicionales = columnas_existentes - columnas_esperadas
+                if columnas_adicionales:
+                    columnas_adicionales_str = ', '.join(sorted(columnas_adicionales))
+                    request.session['columnas_adicionales'] = columnas_adicionales_str
+                
                 df.rename(columns=rename_columns, inplace=True)
                 # Funciones para normalizar las columnas del excel
                 def norm(value):
@@ -551,13 +578,40 @@ def upload_excel(request):
                         if not datos.get(campo):
                             errores[fila]["bloqueantes"].append(f"campo_obligatorio_vacio:{campo}")
 
-                    # Comprobar si los campos estan en el formato correcto
+                    # Comprobar si los campos estan en el formato correcto (numéricos)
                     for campo in ['volumen_actual', 'concentracion_actual', 'masa_actual']:
                         if datos[campo] != None:
                             try:
-                                datos[campo]=float(datos[campo])
+                                valor_numerico = float(datos[campo])
+                                # Validar que sea positivo o cero (≥0)
+                                if valor_numerico < 0:
+                                    errores[fila]["advertencias"].append(f"valor_negativo:{campo}")
+                                    datos[campo] = None  # No asignar valores negativos
+                                else:
+                                    datos[campo] = valor_numerico
                             except (TypeError, ValueError):
-                                errores[fila]["bloqueantes"].append(f"formato_incorrecto:{campo}")
+                                errores[fila]["advertencias"].append(f"formato_incorrecto:{campo}")
+                                datos[campo] = None  # No asignar valores con formato incorrecto
+                    
+                    # Validar estado_actual: debe ser uno de los valores permitidos (case-insensitive)
+                    estado_actual_validos = {
+                        'disponible': 'DISP',
+                        'enviada': 'ENV',
+                        'parcialmente enviada': 'PENV',
+                        'enviada parcialmente': 'PENV',
+                        'destruida': 'DEST',
+                        'disp': 'DISP',
+                        'env': 'ENV',
+                        'penv': 'PENV',
+                        'dest': 'DEST'
+                    }
+                    if datos.get('estado_actual'):
+                        estado_normalizado = str(datos['estado_actual']).strip().lower()
+                        if estado_normalizado in estado_actual_validos:
+                            datos['estado_actual'] = estado_actual_validos[estado_normalizado]
+                        else:
+                            errores[fila]["advertencias"].append("estado_actual_invalido")
+                            datos['estado_actual'] = None
                         
                     # Validar y normalizar fechas (esperado formato día-mes-año o fecha Excel)
                     for campo in ['fecha_extraccion', 'fecha_llegada']:
@@ -692,17 +746,34 @@ def upload_excel(request):
                     if numero_errores_bloqueantes > 0:
                         msg = msg_config['con_bloqueantes'].format(count=numero_errores_bloqueantes)
                         messages.error(request, msg)
+                
+                # Mostrar mensaje de columnas extras si existen
+                tiene_columnas_extras = bool(request.session.get('columnas_adicionales'))
+                numero_columnas_extras = len(request.session.get('columnas_adicionales', '').split(', ')) if request.session.get('columnas_adicionales') else 0
+                columnas_extras_str = request.session.get('columnas_adicionales', '')
+                if tiene_columnas_extras:
+                    msg = msg_config['columnas_extras'].format(count=numero_columnas_extras, detalles=columnas_extras_str)
+                    messages.warning(request, msg)
 
                 # Pasar contadores a la plantilla para mostrar cabeceras y descripciones como en estudios/congeladores
                 context = {
                     'numero_errores_bloqueantes': numero_errores_bloqueantes,
                     'numero_errores_advertencia': numero_errores_advertencia,
+                    'tiene_columnas_extras': tiene_columnas_extras,
+                    'numero_columnas_extras': numero_columnas_extras,
+                    'columnas_extras_str': columnas_extras_str
                 }
                 return render(request, 'confirmacion_upload.html', context)
         # Si se solicita un excel de errores, este se rellena en base a los errores detectados durante la validación 
         elif 'excel_errores' in request.POST:
                     # Leer los errores y el excel de la sesión
                     errores = request.session.get('errores',[])
+                    columnas_adicionales_str = request.session.get('columnas_adicionales', '')
+                    # Convertir string de columnas adicionales a un set para procesamiento
+                    columnas_adicionales = set()
+                    if columnas_adicionales_str:
+                        columnas_adicionales = set(col.strip() for col in columnas_adicionales_str.split(','))
+                    
                     excel_bytes = base64.b64decode(request.session.get('excel_file_base64'))
                     excel_file = io.BytesIO(excel_bytes)
                     wb = openpyxl.load_workbook(excel_file)
@@ -717,6 +788,8 @@ def upload_excel(request):
                     MENSAJES_ERROR = {
                         "campo_obligatorio_vacio": "Campo obligatorio vacío",
                         "formato_incorrecto": "Formato incorrecto",
+                        "valor_negativo": "El valor debe ser positivo (≥0)",
+                        "estado_actual_invalido": "Estado debe ser: Disponible, Enviada, Enviada parcialmente o Destruida",
                         "fecha_invalida": "Fecha inválida (Formato correcto: DD-MM-AAAA)",
                         "fecha_incoherente": "Fecha llegada anterior a fecha de extracción",
                         "muestra_duplicada_bd": "La muestra ya existe en la base de datos",
@@ -755,7 +828,8 @@ def upload_excel(request):
                         'Estudio':'estudio'
                     }
                     for cell in ws[1]:
-                        columnas_excel[rename_columns[cell.value]] = cell.column
+                        if cell.value in rename_columns:
+                            columnas_excel[rename_columns[cell.value]] = cell.column
                     # Añadir la columna de errores
                     col_errores = ws.max_column + 1
                     ws.cell(row=1, column=col_errores, value="Errores")
@@ -781,10 +855,11 @@ def upload_excel(request):
                                 tipo, campo = err.split(":")
                                 if not f"[ERROR] {MENSAJES_ERROR[tipo]}" in mensajes:
                                     mensajes.append(f"[ERROR] {MENSAJES_ERROR[tipo]}")
-                                col = columnas_excel[campo]
-                                celda = ws.cell(row=int(fila), column=col)
-                                celda.fill = FILL_ERROR_CELL
-                                celda.comment = Comment(MENSAJES_ERROR[tipo], "Sistema")
+                                if campo in columnas_excel:
+                                    col = columnas_excel[campo]
+                                    celda = ws.cell(row=int(fila), column=col)
+                                    celda.fill = FILL_ERROR_CELL
+                                    celda.comment = Comment(MENSAJES_ERROR[tipo], "Sistema")
                             else:
                                 mensajes.append(f"[ERROR] {MENSAJES_ERROR[err]}")
                         for warn in info.get("advertencias", []):
@@ -792,10 +867,11 @@ def upload_excel(request):
                                 tipo, campo = warn.split(":")
                                 if not f"[WARN] {MENSAJES_ERROR[tipo]}" in mensajes:
                                     mensajes.append(f"[WARN] {MENSAJES_ERROR[tipo]}")
-                                col = columnas_excel[campo]
-                                celda = ws.cell(row=int(fila), column=col)
-                                celda.fill = FILL_WARN_CELL
-                                celda.comment = Comment(MENSAJES_ERROR[tipo], "Sistema")
+                                if campo in columnas_excel:
+                                    col = columnas_excel[campo]
+                                    celda = ws.cell(row=int(fila), column=col)
+                                    celda.fill = FILL_WARN_CELL
+                                    celda.comment = Comment(MENSAJES_ERROR[tipo], "Sistema")
                             else:
                                 mensajes.append(f"[WARN] {MENSAJES_ERROR[warn]}")
                         ws.cell(row=int(fila), column=col_errores, value="\n".join(mensajes))
@@ -816,6 +892,21 @@ def upload_excel(request):
                                 col_err = columnas_excel[campo]
                                 ws.cell(row=int(fila), column=col_err).fill = FILL_ERROR_CELL
 
+                    # Pintar columnas extras en amarillo (advertencia)
+                    if columnas_adicionales:
+                        for col_name in columnas_adicionales:
+                            # Encontrar el número de columna del Excel original para esta columna extra
+                            for cell in ws[1]:
+                                if cell.value == col_name:
+                                    col_num = cell.column
+                                    # Pintar el encabezado
+                                    header_cell = ws.cell(row=1, column=col_num)
+                                    header_cell.fill = FILL_WARN_CELL
+                                    header_cell.comment = Comment("Columna adicional - será ignorada", "Sistema")
+                                    # Pintar todas las celdas de datos en la columna
+                                    for row in range(2, ws.max_row + 1):
+                                        ws.cell(row=row, column=col_num).fill = FILL_WARN_CELL
+                                    break
 
                     # Rertornar el excel de errores    
                     output = io.BytesIO()    
