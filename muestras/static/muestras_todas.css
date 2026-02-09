@@ -217,12 +217,12 @@
 
 
 /* ------------------------------------------
-   TABLA SIN SCROLL HORIZONTAL
+   TABLA CON SCROLL HORIZONTAL
 ------------------------------------------- */
 
 .table-container {
     width: 100%;
-    overflow-x: hidden;    /* sin scroll horizontal */
+    overflow-x: auto;      /* scroll horizontal si es necesario */
     max-height: 80vh;      /* scroll vertical si hay muchas filas */
     overflow-y: auto;
 }
