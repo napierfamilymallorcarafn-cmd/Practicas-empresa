@@ -540,6 +540,7 @@ document.addEventListener('DOMContentLoaded', function() {
         header.style.cursor = 'pointer';
         header.style.userSelect = 'none';
         sortStates[index] = 0;
+        header.classList.add('sorting');
         
         header.addEventListener('click', function() {
           if (sortStates[index] === 0) {
@@ -550,9 +551,20 @@ document.addEventListener('DOMContentLoaded', function() {
           
           headers.forEach((h, i) => {
             if (i !== index) {
+              h.classList.remove('sorting', 'sorting_asc', 'sorting_desc');
               sortStates[i] = 0;
             }
           });
+          
+          // Aplicar clases según el estado de sort
+          header.classList.remove('sorting', 'sorting_asc', 'sorting_desc');
+          if (sortStates[index] === 1) {
+            header.classList.add('sorting_asc');
+          } else if (sortStates[index] === 2) {
+            header.classList.add('sorting_desc');
+          } else {
+            header.classList.add('sorting');
+          }
           
           sortTable(index, sortStates[index]);
         });

@@ -235,7 +235,24 @@
     width: 100%;
     overflow-x: auto;      /* scroll horizontal si es necesario */
     max-height: 80vh;      /* scroll vertical si hay muchas filas */
-    overflow-y: auto;
+    overflow-y: scroll;    /* siempre mostrar scroll vertical */
+}
+
+.table-container::-webkit-scrollbar {
+    width: 14px; /* ancho del scrollbar */
+}
+
+.table-container::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+.table-container::-webkit-scrollbar-thumb {
+    background: #1a3d7c;
+    border-radius: 7px;
+}
+
+.table-container::-webkit-scrollbar-thumb:hover {
+    background: #163366;
 }
 
 .table-container table{
@@ -327,19 +344,28 @@
     row-gap: 6px;
 }
 
-/* Table header arrows via CSS pseudo-element - always show ↕ */
+/* Table header arrows via CSS pseudo-element */
 .styled-table th {
     position: relative;
     padding-right: 22px; /* space for the pseudo arrow */
 }
-.styled-table th::after {
+
+.sorting::after {
     content: "↕";
-    color: #999;
     position: absolute;
-    right: 8px;
-    top: 50%;
-    transform: translateY(-50%);
-    font-size: 0.9em;
+    right: 6px;
+    opacity: 0.4;
+    font-size: 12px;
+}
+
+.sorting_asc::after {
+    content: "↑";
+    opacity: 1;
+}
+
+.sorting_desc::after {
+    content: "↓";
+    opacity: 1;
 }
 
 
