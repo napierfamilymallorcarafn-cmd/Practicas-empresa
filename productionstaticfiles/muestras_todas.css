@@ -48,6 +48,12 @@
     border-radius: 6px;
     font-size: 14px;
 }
+
+/* Elemento para forzar salto de línea dentro de .filter-grid (ocupa toda la fila) */
+.filter-row {
+    width: 100%;
+    height: 0; /* sin alto visible; puede usarse para separar visualmente con hr si se desea */
+}
 .filter-buttons {
     display: flex;
     flex-direction: row;
@@ -229,12 +235,28 @@
     width: 100%;
     overflow-x: auto;      /* scroll horizontal si es necesario */
     max-height: 80vh;      /* scroll vertical si hay muchas filas */
-    overflow-y: auto;
+    overflow-y: scroll;    /* siempre mostrar scroll vertical */
+}
+
+.table-container::-webkit-scrollbar {
+    width: 14px; /* ancho del scrollbar */
+}
+
+.table-container::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+.table-container::-webkit-scrollbar-thumb {
+    background: #1a3d7c;
+    border-radius: 7px;
+}
+
+.table-container::-webkit-scrollbar-thumb:hover {
+    background: #163366;
 }
 
 .table-container table{
-    width: auto;  /* en lugar de 100% */
-    min-width: 100%;  /* pero al menos el 100% del contenedor */
+    width:100%;
 }
 
 .styled-table {
@@ -320,6 +342,30 @@
     grid-template-columns: max-content max-content;
     column-gap: 40px;
     row-gap: 6px;
+}
+
+/* Table header arrows via CSS pseudo-element */
+.styled-table th {
+    position: relative;
+    padding-right: 22px; /* space for the pseudo arrow */
+}
+
+.sorting::after {
+    content: "↕";
+    position: absolute;
+    right: 6px;
+    opacity: 0.4;
+    font-size: 12px;
+}
+
+.sorting_asc::after {
+    content: "↑";
+    opacity: 1;
+}
+
+.sorting_desc::after {
+    content: "↓";
+    opacity: 1;
 }
 
 

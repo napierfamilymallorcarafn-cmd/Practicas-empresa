@@ -134,4 +134,22 @@ Confirmación subida Excel
 
 </div>
 
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const fileInput = document.querySelector('input[name="excel_file"]') || document.querySelector('input[type="file"]');
+    const uploadButton = document.getElementById('upload-button');
+
+    function toggleUploadButton() {
+        if (!fileInput || !uploadButton) return;
+        uploadButton.disabled = !fileInput.files.length;
+    }
+
+    if (fileInput && uploadButton) {
+        fileInput.addEventListener('change', toggleUploadButton);
+        // set initial state
+        toggleUploadButton();
+    }
+});
+</script>
+
 {%endblock%}

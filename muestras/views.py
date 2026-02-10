@@ -989,11 +989,21 @@ def cambio_posicion(request):
             if form.is_valid():
                 # Leer excel y preparar columnas 
                 excel_file = request.FILES['excel_file']
+                
+                # Validar que sea un archivo Excel
+                if not excel_file.name.lower().endswith(('.xlsx', '.xls', '.xlsm')):
+                    return render(request, 'upload_excel_cambio_posicion.html', {'form': form, 'error': '❌ Error de formato: El archivo debe ser un Excel (.xlsx, .xls o .xlsm).'})
+                
                 excel_bytes = excel_file.read()
                 request.session['excel_file_name'] = excel_file.name
                 request.session['excel_file_base64']= base64.b64encode(excel_bytes).decode()
                 excel_stream = io.BytesIO(excel_bytes)
-                df = pd.read_excel(excel_stream)
+                
+                # Intentar leer el archivo Excel
+                try:
+                    df = pd.read_excel(excel_stream)
+                except Exception as e:
+                    return render(request, 'upload_excel_cambio_posicion.html', {'form': form, 'error': f'❌ Error al leer el archivo Excel: {str(e)}'})
                 
                 rename_columns = {
                     'Nombre Laboratorio': 'nom_lab',
@@ -1006,8 +1016,12 @@ def cambio_posicion(request):
                     'Subposición': 'subposicion',
                 }
                 
+                # Normalizar nombres de columnas a minúsculas para comparación insensible a mayúsculas/minúsculas
+                df.columns = df.columns.str.lower()
+                rename_columns_normalized = {k.lower(): v for k, v in rename_columns.items()}
+                
                 # Validar que el Excel tenga las columnas esperadas
-                columnas_esperadas = set(rename_columns.keys())
+                columnas_esperadas = set(rename_columns_normalized.keys())
                 columnas_existentes = set(df.columns)
                 columnas_faltantes = columnas_esperadas - columnas_existentes
                 
@@ -1016,7 +1030,7 @@ def cambio_posicion(request):
                     return render(request, 'upload_excel_cambio_posicion.html', {'form': form, 'error': f'❌ Error de formato: El archivo Excel no contiene las siguientes columnas esperadas: {columnas_str}'})
                 
                 # Validar que el Excel no esté vacío
-                if df.empty:
+                if df.empty or len(df) == 0:
                     return render(request, 'upload_excel_cambio_posicion.html', {'form': form, 'error': '❌ Error de formato: El archivo Excel está vacío o no contiene filas de datos.'})
                 
                 # Validar columnas adicionales
@@ -1028,7 +1042,7 @@ def cambio_posicion(request):
                     request.session['columnas_adicionales'] = columnas_adicionales_str
                     extra_columns = True
                 
-                df.rename(columns=rename_columns, inplace=True)
+                df.rename(columns=rename_columns_normalized, inplace=True)
                 # Funciones para normalizar las columnas del excel
                 def norm(value):
                     if value is None or pd.isna(value):
@@ -1045,9 +1059,9 @@ def cambio_posicion(request):
                         return None
 
                     if isinstance(value, float) and value.is_integer():
-                        return str(int(value))
+                        return str(int(value)).lower()
 
-                    return str(value).strip()
+                    return str(value).strip().lower()
                 # Carga de datos previos y creación de estructuras 
                 filas_validas = []
                 errores = {}
@@ -1066,11 +1080,11 @@ def cambio_posicion(request):
                          for c in Subposicion.objects.select_related('caja__rack__estante__congelador')
                     },
                     'posiciones_actuales': {
-                        (p.muestra.nom_lab): p.id 
+                        (p.muestra.nom_lab.lower()): p.id 
                         for p in Subposicion.objects.all() if p.muestra != None
                     },
 
-                    'muestras_existentes': set(Muestra.objects.values_list('nom_lab',flat=True))
+                    'muestras_existentes': set(m.lower() for m in Muestra.objects.values_list('nom_lab',flat=True))
                 }
 
                 # Recorrer el df para detectar errores y normalizar
@@ -1088,15 +1102,6 @@ def cambio_posicion(request):
                         "caja":(norm_code(row['caja']) or None),
                         "subposicion":(norm_code(row['subposicion']) or None), 
                     }
-                    # Normalizar a minúsculas los campos de texto para igualdad por mayúsc/minúsc
-                    if datos['congelador'] is not None:
-                        datos['congelador'] = str(datos['congelador']).lower()
-                    if datos['rack'] is not None:
-                        datos['rack'] = str(datos['rack']).lower()
-                    if datos['caja'] is not None:
-                        datos['caja'] = str(datos['caja']).lower()
-                    if datos['subposicion'] is not None:
-                        datos['subposicion'] = str(datos['subposicion']).lower()
                     # Comprobar si los campos obligatorios están rellenados
                     obligatorios = ["nom_lab", "congelador", "estante", "posicion_rack_estante", "rack", "caja", "posicion_caja_rack","subposicion"]
 
@@ -1105,7 +1110,7 @@ def cambio_posicion(request):
                             errores[fila]["bloqueantes"].append(f"campo_obligatorio_vacio:{campo}")
                     
                     # Comprobar si hay duplicados entre las muestras dentro del excel o si la muestra no está en la base de datos
-                    nom_lab = datos["nom_lab"]
+                    nom_lab = datos["nom_lab"].lower()
 
                     if nom_lab not in cache["muestras_existentes"]:
                         errores[fila]["bloqueantes"].append("muestra_no_existe_bd")
@@ -1131,7 +1136,7 @@ def cambio_posicion(request):
                         errores[fila]["bloqueantes"].append("localizacion_ocupada")
                     else:
                         datos["subposicion_id"] = subposicion.id
-                        datos["subposicion_antigua"] = cache['posiciones_actuales'].get(datos['nom_lab'])
+                        datos["subposicion_antigua"] = cache['posiciones_actuales'].get(datos['nom_lab'].lower())
                     
                     # Registrar filas validas
                     if not errores[fila]["bloqueantes"]:
@@ -1195,7 +1200,8 @@ def cambio_posicion(request):
                         'Subposición': 'subposicion',
                     }
                     for cell in ws[1]:
-                        columnas_excel[rename_columns[cell.value]] = cell.column
+                        if cell.value in rename_columns:
+                            columnas_excel[rename_columns[cell.value]] = cell.column
                     # Añadir la columna de errores
                     col_errores = ws.max_column + 1
                     ws.cell(row=1, column=col_errores, value="Errores")
