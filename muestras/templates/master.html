@@ -40,7 +40,7 @@
           <button type="submit">Logout</button>
           </form>
           {%else%}
-          <a href="accounts/login/"> Iniciar sesión </a>
+          <a href="{% url 'login' %}"> Iniciar sesión </a>
           {%endif%}
         </div>
     </nav>
