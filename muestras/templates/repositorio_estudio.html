@@ -267,9 +267,9 @@ document.addEventListener('DOMContentLoaded', function() {
   </div>
 
   <!-- Información de página actual -->
-  <div style="font-weight: 600; color: #333;">
-    Página {{ muestras_page.number }} de {{ paginator.num_pages }} | Total: {{ contador_muestras }} muestra{{ contador_muestras|pluralize }}
-  </div>
+    <div style="font-weight: 600; color: #333;">
+        Página {{ muestras_page.number }} de {{ paginator.num_pages }} | Total: {{ contador_muestras }} documento{{ contador_muestras|pluralize }}
+    </div>
 
   <!-- Controles de navegación -->
   <div style="display: flex; gap: 8px; align-items: center;">

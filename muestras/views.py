@@ -1954,14 +1954,39 @@ def historial_localizaciones_muestra(request,muestra_id):
 def estudios_todos(request):
     # Vista para ver todos los estudios, los investigadores solo ven los suyos asociados
     if request.user.groups.filter(name='Investigadores'):
-        estudios = Estudio.objects.filter(investigadores_asociados=request.user).annotate(num_muestras=Count('muestra'))
+        queryset = Estudio.objects.filter(investigadores_asociados=request.user).annotate(num_muestras=Count('muestra'))
     else:
-        estudios = Estudio.objects.all().annotate(num_muestras=Count('muestra'))
+        queryset = Estudio.objects.all().annotate(num_muestras=Count('muestra'))
+
+    # Paginación
+    contador_total = queryset.count()
+    items_por_pagina = request.GET.get('items_por_pagina', 25)
+    try:
+        items_por_pagina = int(items_por_pagina)
+        if items_por_pagina not in [10, 25, 50, 100]:
+            items_por_pagina = 25
+    except Exception:
+        items_por_pagina = 25
+
+    paginator = Paginator(queryset, items_por_pagina)
+    numero_pagina = request.GET.get('page', 1)
+    try:
+        estudios_page = paginator.page(numero_pagina)
+    except PageNotAnInteger:
+        estudios_page = paginator.page(1)
+    except EmptyPage:
+        estudios_page = paginator.page(paginator.num_pages)
+
     template = loader.get_template('estudios_todos.html')
     context = {
-        'estudios':estudios
+        'estudios': estudios_page.object_list,
+        'paginator': paginator,
+        'muestras_page': estudios_page,  # mantiene compatibilidad con la plantilla existente
+        'contador_muestras': contador_total,
+        'items_por_pagina': items_por_pagina,
+        'request': request,
     }
-    return HttpResponse(template.render(context,request))
+    return HttpResponse(template.render(context, request))
 @permission_required('muestras.can_add_estudios_web')
 def nuevo_estudio(request):
     # Vista para crear un nuevo estudio
@@ -2478,8 +2503,38 @@ def repositorio_estudio(request, id_estudio):
     for doc in documentos:    
         if request.GET.get(f'{doc.id}'):
             eliminar_documento(request, doc.id)
+    # Paginación de documentos
+    contador_total = documentos.count()
+    items_por_pagina = request.GET.get('items_por_pagina', 25)
+    try:
+        items_por_pagina = int(items_por_pagina)
+        if items_por_pagina not in [10, 25, 50, 100]:
+            items_por_pagina = 25
+    except Exception:
+        items_por_pagina = 25
+
+    paginator = Paginator(documentos, items_por_pagina)
+    numero_pagina = request.GET.get('page', 1)
+    try:
+        documentos_page = paginator.page(numero_pagina)
+    except PageNotAnInteger:
+        documentos_page = paginator.page(1)
+    except EmptyPage:
+        documentos_page = paginator.page(paginator.num_pages)
+
     template = loader.get_template('repositorio_estudio.html')
-    return HttpResponse(template.render({'documentos':documentos, 'id':estudio.id, 'usuarios':usuarios},request))
+    context = {
+        'documentos': documentos_page.object_list,
+        'paginator': paginator,
+        'muestras_page': documentos_page,  # mantiene compatibilidad con la plantilla existente
+        'contador_muestras': contador_total,
+        'items_por_pagina': items_por_pagina,
+        'id': estudio.id,
+        'estudio': estudio,
+        'usuarios': usuarios,
+        'request': request,
+    }
+    return HttpResponse(template.render(context, request))
 
 def subir_documento(request, id_estudio):
     # Vista para subir un documento a un estudio específico
