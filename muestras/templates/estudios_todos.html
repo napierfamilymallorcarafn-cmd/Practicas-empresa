@@ -174,5 +174,69 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
+<!-- CONTROLES DE PAGINACIÓN -->
+<div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
+  <!-- Selector de items por página -->
+  <div style="display: flex; align-items: center; gap: 10px;">
+    <label for="items-por-pagina" style="font-weight: 600; color: #333;">Items por página:</label>
+    <form method="GET" style="display: inline; margin: 0;">
+      {% for key, value in request.GET.items %}
+        {% if key != 'items_por_pagina' and key != 'page' %}
+          <input type="hidden" name="{{ key }}" value="{{ value }}">
+        {% endif %}
+      {% endfor %}
+      <select name="items_por_pagina" id="items-por-pagina" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" onchange="this.form.submit();">
+        <option value="10" {% if items_por_pagina == 10 %}selected{% endif %}>10</option>
+        <option value="25" {% if items_por_pagina == 25 %}selected{% endif %}>25</option>
+        <option value="50" {% if items_por_pagina == 50 %}selected{% endif %}>50</option>
+        <option value="100" {% if items_por_pagina == 100 %}selected{% endif %}>100</option>
+      </select>
+    </form>
+  </div>
 
+  <!-- Información de página actual -->
+  <div style="font-weight: 600; color: #333;">
+    Página {{ muestras_page.number }} de {{ paginator.num_pages }} | Total: {{ contador_muestras }} muestra{{ contador_muestras|pluralize }}
+  </div>
+
+  <!-- Controles de navegación -->
+  <div style="display: flex; gap: 8px; align-items: center;">
+    {% if muestras_page.has_previous %}
+      <a href="?page=1{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}" 
+         class="btn btn-secondary" style="padding: 8px 12px; font-size: 12px;">« Primera</a>
+      <a href="?page={{ muestras_page.previous_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}" 
+         class="btn btn-secondary" style="padding: 8px 12px; font-size: 12px;">‹ Anterior</a>
+    {% else %}
+      <button class="btn btn-secondary" disabled style="padding: 8px 12px; font-size: 12px; opacity: 0.5;">« Primera</button>
+      <button class="btn btn-secondary" disabled style="padding: 8px 12px; font-size: 12px; opacity: 0.5;">‹ Anterior</button>
+    {% endif %}
+
+    <!-- Números de página -->
+    <div style="display: flex; gap: 4px; align-items: center;">
+      {% for num in paginator.page_range %}
+        {% if num == muestras_page.number %}
+          <span style="padding: 6px 10px; background: #1a3d7c; color: white; border-radius: 4px; font-weight: 600;">{{ num }}</span>
+        {% elif num > muestras_page.number|add:'-3' and num < muestras_page.number|add:'3' %}
+          <a href="?page={{ num }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}" 
+             style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; text-decoration: none; color: #1a3d7c; background: white;">{{ num }}</a>
+        {% elif num == 1 or num == paginator.num_pages %}
+          <a href="?page={{ num }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}" 
+             style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; text-decoration: none; color: #1a3d7c; background: white;">{{ num }}</a>
+        {% elif num == muestras_page.number|add:'-3' or num == muestras_page.number|add:'3' %}
+          <span style="padding: 0 4px;">...</span>
+        {% endif %}
+      {% endfor %}
+    </div>
+
+    {% if muestras_page.has_next %}
+      <a href="?page={{ muestras_page.next_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}" 
+         class="btn btn-secondary" style="padding: 8px 12px; font-size: 12px;">Siguiente ›</a>
+      <a href="?page={{ paginator.num_pages }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}" 
+         class="btn btn-secondary" style="padding: 8px 12px; font-size: 12px;">Última »</a>
+    {% else %}
+      <button class="btn btn-secondary" disabled style="padding: 8px 12px; font-size: 12px; opacity: 0.5;">Siguiente ›</button>
+      <button class="btn btn-secondary" disabled style="padding: 8px 12px; font-size: 12px; opacity: 0.5;">Última »</button>
+    {% endif %}
+  </div>
+</div>
 {%endblock%}
