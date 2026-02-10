@@ -7,20 +7,3 @@
 {{ block.super }}
 <link rel="icon" type="image/svg+xml" href="{% static 'favicon.svg' %}" />
 {% endblock %}
-{% extends "admin/base.html" %}
-
-{% load static %}
-
- 
-
-{% block title %}Administración - {{ block.super }}{% endblock %}
-
- 
-
-{% block extrahead %}
-
-{{ block.super }}
-
-<link rel="icon" type="image/svg+xml" href="{% static 'favicon.svg' %}" />
-
-{% endblock %}
