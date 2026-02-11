@@ -1660,6 +1660,8 @@ def editar_muestra(request, nom_lab):
     # Vista para editar una muestra existente, requiere permiso para cambiar muestras
     muestra = Muestra.objects.get(nom_lab=nom_lab)
     if request.method == 'POST':
+        # Guardar el estudio anterior ANTES de is_valid(), ya que is_valid() modifica la instancia
+        estudio_anterior = muestra.estudio
         form = MuestraForm(request.POST, instance=muestra)
         if form.is_valid():
             # Verificar si nom_lab ha sido cambiado
@@ -1688,6 +1690,16 @@ def editar_muestra(request, nom_lab):
                     if not form.cleaned_data.get('fecha_llegada') and muestra.fecha_llegada:
                         muestra_guardada.fecha_llegada = muestra.fecha_llegada
                     muestra_guardada.save()
+                    
+                    # Registrar en historial de estudios si el estudio ha cambiado
+                    estudio_nuevo = muestra_guardada.estudio
+                    if estudio_nuevo != estudio_anterior:
+                        historial_estudios.objects.create(
+                            muestra=muestra_guardada,
+                            estudio=estudio_nuevo,
+                            fecha_asignacion=timezone.now(),
+                            usuario_asignacion=request.user
+                        )
                     
                     # Manejar cambio de localización si se proporcionó
                     subposicion_id = request.POST.get("subposicion_id")
