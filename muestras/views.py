@@ -105,56 +105,95 @@ def muestras_todas(request):
     for field in field_names:
         val = request.GET.get(field)
         if val:
-            # Para campos que son dropdowns, usar búsqueda exacta
-            if field in ['id_material', 'centro_procedencia', 'lugar_procedencia', 'estado_actual']:
-                if val == 'null':
-                    # Incluir tanto NULL como cadenas vacías
-                    muestras = muestras.filter(
-                        Q(**{f"{field}__isnull": True}) | Q(**{f"{field}": ""})
-                    )
+            # Separar por punto y coma (;) para permitir múltiples filtros
+            valores = [v.strip() for v in val.split(';') if v.strip()]
+            if valores:
+                # Para campos que son dropdowns, usar búsqueda exacta
+                if field in ['id_material', 'centro_procedencia', 'lugar_procedencia', 'estado_actual']:
+                    q_filters = Q()
+                    for valor in valores:
+                        if valor == 'null':
+                            # Incluir tanto NULL como cadenas vacías
+                            q_filters |= Q(**{f"{field}__isnull": True}) | Q(**{f"{field}": ""})
+                        else:
+                            q_filters |= Q(**{f"{field}": valor})
+                    muestras = muestras.filter(q_filters)
                 else:
-                    muestras = muestras.filter(**{f"{field}": val})
-            else:
-                muestras = muestras.filter(**{f"{field}__icontains": val})
+                    # Para campos de texto: búsqueda icontains para cada valor
+                    q_filters = Q()
+                    for valor in valores:
+                        q_filters |= Q(**{f"{field}__icontains": valor})
+                    muestras = muestras.filter(q_filters)
     
     # Filtrado de las muestras en base al estudio específico (por ID)
     if request.GET.get('estudio'):
-        estudio_id = request.GET['estudio']
-        if estudio_id:  # Solo si tiene valor
-            if estudio_id == 'null':  # Si selecciona "Sin estudio"
-                muestras = muestras.filter(estudio__isnull=True)
-            else:
-                muestras = muestras.filter(estudio__id=estudio_id)
+        estudio_val = request.GET['estudio']
+        if estudio_val:
+            # Separar por punto y coma para múltiples estudios
+            estudios_ids = [e.strip() for e in estudio_val.split(';') if e.strip()]
+            if estudios_ids:
+                q_filters = Q()
+                for estudio_id in estudios_ids:
+                    if estudio_id == 'null':
+                        q_filters |= Q(estudio__isnull=True)
+                    else:
+                        try:
+                            q_filters |= Q(estudio__id=int(estudio_id))
+                        except (ValueError, TypeError):
+                            pass
+                muestras = muestras.filter(q_filters)
     
     # Filtrado por localizaciones
     if request.GET.get('congelador'):
         congelador_val = request.GET['congelador']
-        if congelador_val == 'null':
-            muestras = muestras.filter(subposicion__isnull=True)
-        else:
-            muestras = muestras.filter(subposicion__caja__rack__estante__congelador__congelador__iexact=congelador_val)
+        congeladores = [c.strip() for c in congelador_val.split(';') if c.strip()]
+        if congeladores:
+            q_filters = Q()
+            for congelador in congeladores:
+                if congelador == 'null':
+                    q_filters |= Q(subposicion__isnull=True)
+                else:
+                    q_filters |= Q(subposicion__caja__rack__estante__congelador__congelador__iexact=congelador)
+            muestras = muestras.filter(q_filters)
+    
     if request.GET.get('estante'):
         estante_val = request.GET['estante']
-        if estante_val == 'null':
-            muestras = muestras.filter(subposicion__isnull=True)
-        else:
-            try:
-                estante_num = int(estante_val)
-                muestras = muestras.filter(subposicion__caja__rack__estante__numero=estante_num)
-            except (ValueError, TypeError):
-                pass
+        estantes = [e.strip() for e in estante_val.split(';') if e.strip()]
+        if estantes:
+            q_filters = Q()
+            for estante in estantes:
+                if estante == 'null':
+                    q_filters |= Q(subposicion__isnull=True)
+                else:
+                    try:
+                        q_filters |= Q(subposicion__caja__rack__estante__numero=int(estante))
+                    except (ValueError, TypeError):
+                        pass
+            muestras = muestras.filter(q_filters)
+    
     if request.GET.get('rack'):
         rack_val = request.GET['rack']
-        if rack_val == 'null':
-            muestras = muestras.filter(subposicion__isnull=True)
-        else:
-            muestras = muestras.filter(subposicion__caja__rack__numero__iexact=rack_val)
+        racks = [r.strip() for r in rack_val.split(';') if r.strip()]
+        if racks:
+            q_filters = Q()
+            for rack in racks:
+                if rack == 'null':
+                    q_filters |= Q(subposicion__isnull=True)
+                else:
+                    q_filters |= Q(subposicion__caja__rack__numero__iexact=rack)
+            muestras = muestras.filter(q_filters)
+    
     if request.GET.get('caja'):
         caja_val = request.GET['caja']
-        if caja_val == 'null':
-            muestras = muestras.filter(subposicion__isnull=True)
-        else:
-            muestras = muestras.filter(subposicion__caja__numero__iexact=caja_val)
+        cajas = [c.strip() for c in caja_val.split(';') if c.strip()]
+        if cajas:
+            q_filters = Q()
+            for caja in cajas:
+                if caja == 'null':
+                    q_filters |= Q(subposicion__isnull=True)
+                else:
+                    q_filters |= Q(subposicion__caja__numero__iexact=caja)
+            muestras = muestras.filter(q_filters)
 
     # Filtrado de las muestras a mostrar si el perfil es de un investigador, mostrando solo las asociadas a sus estudios
     if request.user.groups.filter(name='Investigadores'):
@@ -2609,14 +2648,24 @@ def repositorio_estudio(request, id_estudio):
     documentos = Documento.objects.filter(estudio = estudio, eliminado= False)
     request.session['id'] = id_estudio
     usuarios = User.objects.all()
-    # Filtrado opcional por usuario
+    # Filtrado opcional por usuario (soporta múltiples valores separados por ;)
     usuario = request.GET.get('usuario')
     if usuario:
-        documentos = documentos.filter(usuario_subida__username=usuario)
-    # Filtrado opcional por categoría
+        usuarios_list = [u.strip() for u in usuario.split(';') if u.strip()]
+        if usuarios_list:
+            q_filters = Q()
+            for user in usuarios_list:
+                q_filters |= Q(usuario_subida__username=user)
+            documentos = documentos.filter(q_filters)
+    # Filtrado opcional por categoría (soporta múltiples valores separados por ;)
     categoria = request.GET.get('categoria')
     if categoria:
-        documentos = documentos.filter(categoria__icontains=categoria)
+        categorias_list = [c.strip() for c in categoria.split(';') if c.strip()]
+        if categorias_list:
+            q_filters = Q()
+            for cat in categorias_list:
+                q_filters |= Q(categoria__icontains=cat)
+            documentos = documentos.filter(q_filters)
     for doc in documentos:    
         if request.GET.get(f'{doc.id}'):
             eliminar_documento(request, doc.id)
