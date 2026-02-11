@@ -1,11 +1,16 @@
 from django import forms
 from .models import Muestra, Localizacion, Estudio, Documento,agenda_envio, Congelador
+
 # Archivo que describe los formularios de la app basados en modelos 
 class MuestraForm(forms.ModelForm):
     # Formulario basado en el modelo Muestra, se incluyen todos los campos del modelo
     class Meta:
         model = Muestra
         fields = '__all__'
+        widgets = {
+            'fecha_extraccion': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'fecha_llegada': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+        }
 
 class UploadExcel(forms.Form):
     # Formulario para subir un archivo Excel 
@@ -21,6 +26,10 @@ class EstudioForm(forms.ModelForm):
     class Meta:
         model=Estudio
         fields= ['referencia_estudio','nombre_estudio','descripcion_estudio','fecha_inicio_estudio','fecha_fin_estudio','investigador_principal']
+        widgets = {
+            'fecha_inicio_estudio': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+            'fecha_fin_estudio': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
+        }
 class DocumentoForm(forms.ModelForm):
     # Formulario para añadir un documento, se incluyen algunos campos
     class Meta:

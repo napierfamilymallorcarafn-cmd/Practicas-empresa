@@ -1316,7 +1316,13 @@ def editar_muestra(request, id_individuo, nom_lab):
                                 [nom_lab_nuevo, nom_lab_anterior]
                             )
                     
-                    form.save()
+                    # Preservar fechas si el usuario las dejó vacías pero había valores anteriores
+                    muestra_guardada = form.save(commit=False)
+                    if not form.cleaned_data.get('fecha_extraccion') and muestra.fecha_extraccion:
+                        muestra_guardada.fecha_extraccion = muestra.fecha_extraccion
+                    if not form.cleaned_data.get('fecha_llegada') and muestra.fecha_llegada:
+                        muestra_guardada.fecha_llegada = muestra.fecha_llegada
+                    muestra_guardada.save()
             finally:
                 # Reactivar las restricciones de clave foránea
                 with connection.cursor() as cursor:
@@ -2426,7 +2432,13 @@ def editar_estudio(request, id_estudio):
                 template = loader.get_template('editar_estudio.html')
                 return HttpResponse(template.render({'form': form, 'estudio': estudio}, request))
 
-            form.save()
+            # Preservar fechas si el usuario las dejó vacías pero había valores anteriores
+            estudio_guardado = form.save(commit=False)
+            if not form.cleaned_data.get('fecha_inicio_estudio') and estudio.fecha_inicio_estudio:
+                estudio_guardado.fecha_inicio_estudio = estudio.fecha_inicio_estudio
+            if not form.cleaned_data.get('fecha_fin_estudio') and estudio.fecha_fin_estudio:
+                estudio_guardado.fecha_fin_estudio = estudio.fecha_fin_estudio
+            estudio_guardado.save()
             messages.info(request,'El estudio se ha modificado correctamente')
             return redirect('estudios_todos')
     else:
