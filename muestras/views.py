@@ -452,10 +452,6 @@ def eliminar_muestra(request, nom_lab):
 def upload_excel(request):
     # Vista para subir un archivo Excel con múltiples muestras y asociarlas a un estudio y subposición desde el excel, requiere permiso para añadir muestras
     if request.method=="POST":
-        # Limpiar sesión residual de uploads anteriores
-        if 'columnas_adicionales' in request.session:
-            del request.session['columnas_adicionales']
-        
         form = UploadExcel(request.POST, request.FILES)
         # Si el usuario confirma, se crean en la base de datos los registros validos
         if 'confirmar' in request.POST:
@@ -563,6 +559,9 @@ def upload_excel(request):
         
         # Si hay un archivo excel subido, se procesa
         elif 'excel_file' in request.FILES:
+            # Limpiar sesión residual de uploads anteriores
+            if 'columnas_adicionales' in request.session:
+                del request.session['columnas_adicionales']
             if form.is_valid():
                 # Leer excel y preparar columnas 
                 excel_file = request.FILES['excel_file']
@@ -934,6 +933,7 @@ def upload_excel(request):
                     FILL_WARN_ROW  = PatternFill("solid", fgColor=colors['warning_row'])
                     FILL_ERROR_CELL = PatternFill("solid", fgColor=colors['error_cell'])
                     FILL_WARN_CELL  = PatternFill("solid", fgColor=colors['warning_cell'])
+                    FILL_EXTRA_COL  = PatternFill("solid", fgColor=colors['extra_column'])
                     # Diccionario de mensajes
                     MENSAJES_ERROR = {
                         "campo_obligatorio_vacio": "Campo obligatorio vacío",
@@ -984,66 +984,64 @@ def upload_excel(request):
                     # Añadir la columna de errores
                     col_errores = ws.max_column + 1
                     ws.cell(row=1, column=col_errores, value="Errores")
+                    # Mapear errores sin campo a sus columnas específicas (para muestras)
+                    error_campo_map = {
+                        "muestra_duplicada_bd": "nom_lab",
+                        "muestra_duplicada_excel": "nom_lab",
+                        "localizacion_no_existe": "subposicion",
+                        "localizacion_ocupada": "subposicion"
+                    }
                     # Recorrer filas con errores 
                     for fila, info in errores.items():
-                        # Pintar las filas (acceso defensivo)
                         has_error = bool(info.get("bloqueantes", []))
                         has_warn = bool(info.get("advertencias", []))
-
-                        if has_error:
-                            fill_fila = FILL_ERROR_ROW
-                        elif has_warn:
-                            fill_fila = FILL_WARN_ROW
-                        else:
+                        if not has_error and not has_warn:
                             continue
-                        for col in range(1, ws.max_column + 1):
-                            ws.cell(row=int(fila), column=col).fill = fill_fila
 
-                        # Escribir en la columna de errores, colorear las celdas con error y poner un comentario en ellas
+                        # Si hay errores, pintar fila completa con color claro
+                        if has_error:
+                            for col in range(1, ws.max_column + 1):
+                                ws.cell(row=int(fila), column=col).fill = FILL_ERROR_ROW
+
+                        # Colorear celdas específicas y construir mensajes
                         mensajes = []
                         for err in info.get("bloqueantes", []):
                             if ":" in err:
                                 tipo, campo = err.split(":")
-                                if not f"[ERROR] {MENSAJES_ERROR[tipo]}" in mensajes:
-                                    mensajes.append(f"[ERROR] {MENSAJES_ERROR[tipo]}")
+                                msg = f"(Error) {MENSAJES_ERROR[tipo]}"
+                                if msg not in mensajes:
+                                    mensajes.append(msg)
                                 if campo in columnas_excel:
                                     col = columnas_excel[campo]
                                     celda = ws.cell(row=int(fila), column=col)
                                     celda.fill = FILL_ERROR_CELL
-                                    celda.comment = Comment(MENSAJES_ERROR[tipo], "Sistema")
                             else:
-                                mensajes.append(f"[ERROR] {MENSAJES_ERROR[err]}")
+                                campo = error_campo_map.get(err)
+                                msg = f"(Error) {MENSAJES_ERROR[err]}"
+                                if msg not in mensajes:
+                                    mensajes.append(msg)
+                                if campo and campo in columnas_excel:
+                                    col_err = columnas_excel[campo]
+                                    ws.cell(row=int(fila), column=col_err).fill = FILL_ERROR_CELL
                         for warn in info.get("advertencias", []):
                             if ":" in warn:
                                 tipo, campo = warn.split(":")
-                                if not f"[WARN] {MENSAJES_ERROR[tipo]}" in mensajes:
-                                    mensajes.append(f"[WARN] {MENSAJES_ERROR[tipo]}")
+                                mensaje_warn = MENSAJES_ERROR.get(tipo, tipo)
+                                msg = f"(Advertencia) {mensaje_warn}"
+                                if msg not in mensajes:
+                                    mensajes.append(msg)
                                 if campo in columnas_excel:
                                     col = columnas_excel[campo]
                                     celda = ws.cell(row=int(fila), column=col)
                                     celda.fill = FILL_WARN_CELL
-                                    celda.comment = Comment(MENSAJES_ERROR[tipo], "Sistema")
                             else:
-                                mensajes.append(f"[WARN] {MENSAJES_ERROR[warn]}")
+                                mensaje_warn = MENSAJES_ERROR.get(warn, warn)
+                                msg = f"(Advertencia) {mensaje_warn}"
+                                if msg not in mensajes:
+                                    mensajes.append(msg)
                         ws.cell(row=int(fila), column=col_errores, value="\n".join(mensajes))
-                        # Reaplicar el color intenso a las celdas de error para asegurar que sobrescriba la fila
-                        # Mapear errores sin campo a sus columnas específicas (para muestras)
-                        error_campo_map = {
-                            "muestra_duplicada_bd": "nom_lab",
-                            "muestra_duplicada_excel": "nom_lab",
-                            "localizacion_no_existe": "subposicion",
-                            "localizacion_ocupada": "subposicion"
-                        }
-                        for err in info.get("bloqueantes", []):
-                            if ":" in err:
-                                _, campo = err.split(":")
-                            else:
-                                campo = error_campo_map.get(err)
-                            if campo and campo in columnas_excel:
-                                col_err = columnas_excel[campo]
-                                ws.cell(row=int(fila), column=col_err).fill = FILL_ERROR_CELL
 
-                    # Pintar columnas extras en amarillo (advertencia)
+                    # Pintar columnas extras con color de columna extra
                     if columnas_adicionales:
                         for col_name in columnas_adicionales:
                             # Encontrar el número de columna del Excel original para esta columna extra
@@ -1052,11 +1050,10 @@ def upload_excel(request):
                                     col_num = cell.column
                                     # Pintar el encabezado
                                     header_cell = ws.cell(row=1, column=col_num)
-                                    header_cell.fill = FILL_WARN_CELL
-                                    header_cell.comment = Comment("Columna adicional - será ignorada", "Sistema")
+                                    header_cell.fill = FILL_EXTRA_COL
                                     # Pintar todas las celdas de datos en la columna
                                     for row in range(2, ws.max_row + 1):
-                                        ws.cell(row=row, column=col_num).fill = FILL_WARN_CELL
+                                        ws.cell(row=row, column=col_num).fill = FILL_EXTRA_COL
                                     break
 
                     # Rertornar el excel de errores    
@@ -1137,6 +1134,9 @@ def cambio_posicion(request):
             return redirect('muestras_todas')
         
         elif 'excel_file' in request.FILES:
+            # Limpiar sesión residual de uploads anteriores
+            if 'columnas_adicionales' in request.session:
+                del request.session['columnas_adicionales']
             if form.is_valid():
                 # Leer excel y preparar columnas 
                 excel_file = request.FILES['excel_file']
@@ -1322,13 +1322,20 @@ def cambio_posicion(request):
         elif 'excel_errores' in request.POST:
                     # Leer los errores y el excel de la sesión
                     errores = request.session.get('errores',[])
+                    columnas_adicionales_str = request.session.get('columnas_adicionales', '')
+                    columnas_adicionales = set()
+                    if columnas_adicionales_str:
+                        columnas_adicionales = set(col.strip() for col in columnas_adicionales_str.split(','))
+                    
                     excel_bytes = base64.b64decode(request.session.get('excel_file_base64'))
                     excel_file = io.BytesIO(excel_bytes)
                     wb = openpyxl.load_workbook(excel_file)
                     ws = wb.active
-                    # Definir los estilos para pintar el excel
-                    FILL_ERROR_ROW = PatternFill("solid", fgColor="F8D7DA")   # rojo claro
-                    FILL_ERROR_CELL = PatternFill("solid", fgColor="F5C2C7")  # rojo fuerte
+                    # Definir los estilos para pintar el excel usando configuración centralizada
+                    colors = get_excel_colors()
+                    FILL_ERROR_ROW = PatternFill("solid", fgColor=colors['error_row'])
+                    FILL_ERROR_CELL = PatternFill("solid", fgColor=colors['error_cell'])
+                    FILL_EXTRA_COL  = PatternFill("solid", fgColor=colors['extra_column'])
                     # Diccionario de mensajes
                     MENSAJES_ERROR = {
                         "campo_obligatorio_vacio": "Campo obligatorio vacío",
@@ -1357,46 +1364,57 @@ def cambio_posicion(request):
                     # Añadir la columna de errores
                     col_errores = ws.max_column + 1
                     ws.cell(row=1, column=col_errores, value="Errores")
+                    # Mapear errores sin campo a sus columnas específicas (cambio posición)
+                    error_campo_map_cambio = {
+                        "muestra_no_existe_bd": "nom_lab",
+                        "muestra_duplicada_excel": "nom_lab",
+                        "localizacion_ocupada": "subposicion",
+                        "localizacion_no_existe": "congelador"
+                    }
                     # Recorrer filas con errores 
                     for fila, info in errores.items():
-                        # Pintar las filas
                         has_error = bool(info["bloqueantes"])
-                        if has_error:
-                            fill_fila = FILL_ERROR_ROW
-                        else:
+                        if not has_error:
                             continue
-                        # Pintar la fila completa con rojo claro
-                        for col in range(1, ws.max_column + 1):
-                            ws.cell(row=int(fila), column=col).fill = fill_fila
 
-                        # Escribir en la columna de errores, colorear las celdas con error y poner un comentario en ellas
+                        # Pintar fila completa con color claro
+                        for col in range(1, ws.max_column + 1):
+                            ws.cell(row=int(fila), column=col).fill = FILL_ERROR_ROW
+
+                        # Colorear celdas específicas y construir mensajes
                         mensajes = []
                         for err in info["bloqueantes"]:
                             if ":" in err:
                                 tipo, campo = err.split(":")
-                                mensajes.append(f"[ERROR] {MENSAJES_ERROR[tipo]}")
+                                msg = f"(Error) {MENSAJES_ERROR[tipo]}"
+                                if msg not in mensajes:
+                                    mensajes.append(msg)
                                 col = columnas_excel[campo]
                                 celda = ws.cell(row=int(fila), column=col)
                                 celda.fill = FILL_ERROR_CELL
-                                celda.comment = Comment(MENSAJES_ERROR[tipo], "Sistema")
-                            else:
-                                mensajes.append(f"[ERROR] {MENSAJES_ERROR[err]}")
-                        ws.cell(row=int(fila), column=col_errores, value="\n".join(mensajes))
-                        # Reaplicar el color intenso a las celdas de error con mapeo de errores sin campo
-                        error_campo_map_cambio = {
-                            "muestra_no_existe_bd": "nom_lab",
-                            "muestra_duplicada_excel": "nom_lab",
-                            "localizacion_ocupada": "subposicion",
-                            "localizacion_no_existe": "congelador"
-                        }
-                        for err in info.get("bloqueantes", []):
-                            if ":" in err:
-                                _, campo = err.split(":")
                             else:
                                 campo = error_campo_map_cambio.get(err)
-                            if campo and campo in columnas_excel:
-                                col_err = columnas_excel[campo]
-                                ws.cell(row=int(fila), column=col_err).fill = FILL_ERROR_CELL
+                                msg = f"(Error) {MENSAJES_ERROR[err]}"
+                                if msg not in mensajes:
+                                    mensajes.append(msg)
+                                if campo and campo in columnas_excel:
+                                    col_err = columnas_excel[campo]
+                                    ws.cell(row=int(fila), column=col_err).fill = FILL_ERROR_CELL
+                        ws.cell(row=int(fila), column=col_errores, value="\n".join(mensajes))
+
+                    # Pintar columnas extras con color de columna extra
+                    if columnas_adicionales:
+                        # Comparación case-insensitive porque la validación normaliza a minúsculas
+                        extras_lower = {c.lower() for c in columnas_adicionales}
+                        for cell in ws[1]:
+                            if cell.value and str(cell.value).lower() in extras_lower:
+                                col_num = cell.column
+                                # Pintar el encabezado
+                                ws.cell(row=1, column=col_num).fill = FILL_EXTRA_COL
+                                # Pintar todas las celdas de datos en la columna
+                                for row in range(2, ws.max_row + 1):
+                                    ws.cell(row=row, column=col_num).fill = FILL_EXTRA_COL
+
                     # Rertornar el excel de errores    
                     output = io.BytesIO()    
                     wb.save(output)
@@ -1586,10 +1604,6 @@ def localizaciones(request):
 @permission_required('muestras.can_add_localizaciones_web')
 def upload_excel_localizaciones(request):
     if request.method=="POST":
-        # Limpiar sesión residual de uploads anteriores
-        if 'columnas_adicionales' in request.session:
-            del request.session['columnas_adicionales']
-        
         # Vista para subir localizaciones desde un archivo Excel, requiere permiso para añadir localizaciones
         form = UploadExcel(request.POST, request.FILES)
         # Definir el mapeo de columnas
@@ -1667,6 +1681,9 @@ def upload_excel_localizaciones(request):
             return redirect('localizaciones_todas')
         # Si se sube un archivo excel, se procesa y valida
         elif 'excel_file' in request.FILES:
+            # Limpiar sesión residual de uploads anteriores
+            if 'columnas_adicionales' in request.session:
+                del request.session['columnas_adicionales']
             if form.is_valid():
                 # Leer excel
                 excel_file = request.FILES['excel_file']
@@ -1928,36 +1945,6 @@ def upload_excel_localizaciones(request):
                     if cell.value in extra_cols:
                         extra_col_indices.append(cell.column)
 
-            # Recorrer filas con errores (solo filas con bloqueantes) - PRIMERO PINTAR FILAS
-            for fila_numero, info in errores.items():
-                has_error = bool(info.get("bloqueantes"))
-                if not has_error:
-                    continue
-
-                # Pintar la fila completa con rojo claro
-                for col in range(1, ws.max_column + 1):
-                    ws.cell(row=int(fila_numero), column=col).fill = FILL_ERROR_ROW
-
-                # Escribir en la columna de errores y colorear celdas con error
-                mensajes = []
-                for err in info.get("bloqueantes", []):
-                    if ":" in err:
-                        tipo, campo = err.split(":")
-                        mensajes.append(f"[ERROR] {MENSAJES_ERROR[tipo]}")
-                        if campo in columnas_excel:
-                            col = columnas_excel[campo]
-                            celda = ws.cell(row=int(fila_numero), column=col)
-                            celda.fill = FILL_ERROR_CELL
-                            celda.comment = Comment(MENSAJES_ERROR[tipo], "Sistema")
-                    else:
-                        mensajes.append(f"[ERROR] {MENSAJES_ERROR[err]}")
-
-                # No añadir mensajes de columna inválida en la columna 'Errores'.
-                # Solo dejar los mensajes de errores por fila (si los hay).
-                celda_errores = ws.cell(row=int(fila_numero), column=col_errores)
-                celda_errores.value = "\n".join(mensajes)
-            
-            # Reaplicar color intenso a las celdas con error
             # Mapeo de errores sin campo a sus columnas específicas (de localizaciones)
             error_campo_map_loc = {
                 "localizacion_duplicada": "subposicion",
@@ -1967,17 +1954,39 @@ def upload_excel_localizaciones(request):
                 "posicion_rack_ocupada": "posicion_rack_estante",
                 "posicion_caja_ocupada": "posicion_caja_rack"
             }
+            # Recorrer filas con errores
             for fila_numero, info in errores.items():
-                if not info.get("bloqueantes"):
+                has_error = bool(info.get("bloqueantes"))
+                if not has_error:
                     continue
-                for err in info["bloqueantes"]:
+
+                # Pintar fila completa con color claro
+                for col in range(1, ws.max_column + 1):
+                    ws.cell(row=int(fila_numero), column=col).fill = FILL_ERROR_ROW
+
+                # Colorear celdas específicas y construir mensajes
+                mensajes = []
+                for err in info.get("bloqueantes", []):
                     if ":" in err:
-                        _, campo = err.split(":")
+                        tipo, campo = err.split(":")
+                        msg = f"(Error) {MENSAJES_ERROR[tipo]}"
+                        if msg not in mensajes:
+                            mensajes.append(msg)
+                        if campo in columnas_excel:
+                            col = columnas_excel[campo]
+                            celda = ws.cell(row=int(fila_numero), column=col)
+                            celda.fill = FILL_ERROR_CELL
                     else:
                         campo = error_campo_map_loc.get(err)
-                    if campo and campo in columnas_excel:
-                        col_err = columnas_excel[campo]
-                        ws.cell(row=int(fila_numero), column=col_err).fill = FILL_ERROR_CELL
+                        msg = f"(Error) {MENSAJES_ERROR[err]}"
+                        if msg not in mensajes:
+                            mensajes.append(msg)
+                        if campo and campo in columnas_excel:
+                            col_err = columnas_excel[campo]
+                            ws.cell(row=int(fila_numero), column=col_err).fill = FILL_ERROR_CELL
+
+                celda_errores = ws.cell(row=int(fila_numero), column=col_errores)
+                celda_errores.value = "\n".join(mensajes)
             
             # DESPUÉS PINTAR LAS COLUMNAS EXTRAS (sobrescribe el color de fila con rojo fuerte)
             if extra_col_indices:
@@ -2466,6 +2475,7 @@ def excel_estudios(request):
                     FILL_WARN_ROW  = PatternFill("solid", fgColor=colors['warning_row'])
                     FILL_ERROR_CELL = PatternFill("solid", fgColor=colors['error_cell'])
                     FILL_WARN_CELL  = PatternFill("solid", fgColor=colors['warning_cell'])
+                    FILL_EXTRA_COL  = PatternFill("solid", fgColor=colors['extra_column'])
                     # Diccionario de mensajes
                     MENSAJES_ERROR = {
                         "campo_obligatorio_vacio": "Campo obligatorio vacío",
@@ -2493,79 +2503,72 @@ def excel_estudios(request):
                     # Añadir la columna de errores
                     col_errores = ws.max_column + 1
                     ws.cell(row=1, column=col_errores, value="Errores")
+                    # Mapeo de errores sin campo a sus columnas específicas (estudios)
+                    error_campo_map_study = {
+                        "estudio_existente": "nombre_estudio",
+                        "estudio_duplicado_excel": "nombre_estudio",
+                        "referencia_existente": "referencia_estudio",
+                        "referencia_duplicada_excel": "referencia_estudio"
+                    }
                     # Recorrer filas con errores 
                     for fila, info in errores.items():
-                        # Pintar las filas (acceso defensivo con .get())
                         has_error = bool(info.get("bloqueantes", []))
                         has_warn = bool(info.get("advertencias", []))
-
-                        if has_error:
-                            fill_fila = FILL_ERROR_ROW
-                        elif has_warn:
-                            fill_fila = FILL_WARN_ROW
-                        else:
+                        if not has_error and not has_warn:
                             continue
-                        for col in range(1, ws.max_column + 1):
-                            ws.cell(row=int(fila), column=col).fill = fill_fila
 
-                        # Escribir en la columna de errores, colorear las celdas con error y poner un comentario en ellas
+                        # Si hay errores, pintar fila completa con color claro
+                        if has_error:
+                            for col in range(1, ws.max_column + 1):
+                                ws.cell(row=int(fila), column=col).fill = FILL_ERROR_ROW
+
+                        # Colorear celdas específicas y construir mensajes
                         mensajes = []
                         for err in info.get("bloqueantes", []):
                             if ":" in err:
                                 tipo, campo = err.split(":")
-                                mensajes.append(f"[ERROR] {MENSAJES_ERROR[tipo]}")
+                                msg = f"(Error) {MENSAJES_ERROR[tipo]}"
+                                if msg not in mensajes:
+                                    mensajes.append(msg)
                                 col = columnas_excel[campo]
                                 celda = ws.cell(row=int(fila), column=col)
                                 celda.fill = FILL_ERROR_CELL
-                                celda.comment = Comment(MENSAJES_ERROR[tipo], "Sistema")
                             else:
-                                mensajes.append(f"[ERROR] {MENSAJES_ERROR[err]}")
+                                campo = error_campo_map_study.get(err)
+                                msg = f"(Error) {MENSAJES_ERROR[err]}"
+                                if msg not in mensajes:
+                                    mensajes.append(msg)
+                                if campo and campo in columnas_excel:
+                                    col_err = columnas_excel[campo]
+                                    ws.cell(row=int(fila), column=col_err).fill = FILL_ERROR_CELL
                         for warn in info.get("advertencias", []): 
-                            # Algunos warnings tienen formato 'tipo:campo', otros son solo 'tipo'
                             if ":" in warn:
                                 tipo, campo = warn.split(":", 1)
                                 mensaje_warn = MENSAJES_ERROR.get(tipo, tipo)
-                                if not f"[WARN] {mensaje_warn}" in mensajes:
-                                    mensajes.append(f"[WARN] {mensaje_warn}")
-                                # Colorear y añadir comentario solo si se conoce la columna
+                                msg = f"(Advertencia) {mensaje_warn}"
+                                if msg not in mensajes:
+                                    mensajes.append(msg)
                                 if campo in columnas_excel:
                                     col = columnas_excel[campo]
                                     celda = ws.cell(row=int(fila), column=col)
                                     celda.fill = FILL_WARN_CELL
-                                    celda.comment = Comment(mensaje_warn, "Sistema")
                             else:
-                                tipo = warn
-                                mensaje_warn = MENSAJES_ERROR.get(tipo, tipo.replace("_", " "))
-                                if not f"[WARN] {mensaje_warn}" in mensajes:
-                                    mensajes.append(f"[WARN] {mensaje_warn}")
+                                mensaje_warn = MENSAJES_ERROR.get(warn, warn)
+                                msg = f"(Advertencia) {mensaje_warn}"
+                                if msg not in mensajes:
+                                    mensajes.append(msg)
                         ws.cell(row=int(fila), column=col_errores, value="\n".join(mensajes))
-                        # Reaplicar color intenso a las celdas con error usando mapeo de errores sin campo
-                        error_campo_map_study = {
-                            "estudio_existente": "nombre_estudio",
-                            "estudio_duplicado_excel": "nombre_estudio",
-                            "referencia_existente": "referencia_estudio",
-                            "referencia_duplicada_excel": "referencia_estudio"
-                        }
-                        for err in info["bloqueantes"]:
-                            if ":" in err:
-                                _, campo = err.split(":")
-                            else:
-                                campo = error_campo_map_study.get(err)
-                            if campo and campo in columnas_excel:
-                                col_err = columnas_excel[campo]
-                                ws.cell(row=int(fila), column=col_err).fill = FILL_ERROR_CELL
 
-                    # Pintar columnas extras en amarillo
+                    # Pintar columnas extras con color de columna extra
                     expected_renamed = set(rename_columns.values())
                     for col_name, col_num in columnas_excel.items():
                         if col_name not in expected_renamed:
                             # Pintar el encabezado
                             header_cell = ws.cell(row=1, column=col_num)
-                            header_cell.fill = FILL_WARN_CELL
-                            header_cell.comment = Comment("Columna adicional - será ignorada", "Sistema")
+                            header_cell.fill = FILL_EXTRA_COL
                             # Pintar todas las celdas de datos en la columna
                             for row in range(2, ws.max_row + 1):
-                                ws.cell(row=row, column=col_num).fill = FILL_WARN_CELL
+                                ws.cell(row=row, column=col_num).fill = FILL_EXTRA_COL
 
                     output = io.BytesIO()    
                     wb.save(output)
@@ -2881,10 +2884,6 @@ def upload_excel_envios(request,centro):
     # Vista para subir un archivo Excel con los datos de envío de muestras
     centro_envio = agenda_envio.objects.get(id=centro)
     if request.method=='POST':
-        # Limpiar sesión residual de uploads anteriores
-        if 'columnas_adicionales' in request.session:
-            del request.session['columnas_adicionales']
-        
         form = UploadExcel(request.POST, request.FILES)
         if 'confirmar' in request.POST:
             # Si el usuario confirma, se registran los envíos en la base de datos
@@ -2952,6 +2951,9 @@ def upload_excel_envios(request,centro):
             wb.save(response)
             return response
         elif 'excel_file' in request.FILES:
+            # Limpiar sesión residual de uploads anteriores
+            if 'columnas_adicionales' in request.session:
+                del request.session['columnas_adicionales']
             # Si se sube un archivo excel, se procesa y valida
             if form.is_valid():
                 # Leer excel y preparar columnas 
@@ -3128,37 +3130,43 @@ def upload_excel_envios(request,centro):
                 # Añadir la columna de errores
                 col_errores = ws.max_column + 1
                 ws.cell(row=1, column=col_errores, value="Errores")
+                # Mapeo de errores sin campo a sus columnas específicas (envíos)
+                error_campo_map_envio = {
+                    "muestra_inexistente": "nom_lab",
+                    "muestra_duplicada_excel": "nom_lab",
+                    "volumen_alto": "volumen_enviado",
+                    "estado_no_disponible": "nom_lab"
+                }
                 # Recorrer filas con errores 
                 for fila, info in errores.items():
-                    # Pintar las filas
                     has_error = bool(info["bloqueantes"])
-                    if has_error:
-                        fill_fila = FILL_ERROR_ROW
-                    else:
+                    if not has_error:
                         continue
-                    for col in range(1, ws.max_column + 1):
-                        ws.cell(row=int(fila), column=col).fill = fill_fila
 
-                    # Escribir en la columna de errores, colorear las celdas con error y poner un comentario en ellas
+                    # Pintar fila completa con color claro
+                    for col in range(1, ws.max_column + 1):
+                        ws.cell(row=int(fila), column=col).fill = FILL_ERROR_ROW
+
+                    # Colorear celdas específicas y construir mensajes
                     mensajes = []
                     for err in info["bloqueantes"]:
                         if ":" in err:
                             tipo, campo = err.split(":")
-                            mensajes.append(f"[ERROR] {MENSAJES_ERROR[tipo]}")
+                            msg = f"(Error) {MENSAJES_ERROR[tipo]}"
+                            if msg not in mensajes:
+                                mensajes.append(msg)
                             col = columnas_excel[campo]
                             celda = ws.cell(row=int(fila), column=col)
                             celda.fill = FILL_ERROR_CELL
-                            celda.comment = Comment(MENSAJES_ERROR[tipo], "Sistema")
                         else:
-                            mensajes.append(f"[ERROR] {MENSAJES_ERROR[err]}")
-                        ws.cell(row=int(fila), column=col_errores, value="\n".join(mensajes))
-                        # Asegurar que las celdas de error queden con el color intenso
-                        for err in info["bloqueantes"]:
-                            if ":" in err:
-                                _, campo = err.split(":")
-                                if campo in columnas_excel:
-                                    col_err = columnas_excel[campo]
-                                    ws.cell(row=int(fila), column=col_err).fill = FILL_ERROR_CELL
+                            campo = error_campo_map_envio.get(err)
+                            msg = f"(Error) {MENSAJES_ERROR[err]}"
+                            if msg not in mensajes:
+                                mensajes.append(msg)
+                            if campo and campo in columnas_excel:
+                                col_err = columnas_excel[campo]
+                                ws.cell(row=int(fila), column=col_err).fill = FILL_ERROR_CELL
+                    ws.cell(row=int(fila), column=col_errores, value="\n".join(mensajes))
                 # Retornar el excel de errores 
                 output = io.BytesIO()    
                 wb.save(output)
