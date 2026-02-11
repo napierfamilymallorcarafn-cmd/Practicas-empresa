@@ -2006,10 +2006,34 @@ def editar_congelador(request,nombre_congelador):
     # Vista para editar un congelador existente, requiere permiso para añadir localizaciones
     congelador = Congelador.objects.filter(congelador=nombre_congelador)
     congelador=congelador[0]
+    nombre_anterior = congelador.congelador  # Capturar ANTES de is_valid()
     if request.method == 'POST':
         form = Congeladorform(request.POST, request.FILES, instance=congelador)
         if form.is_valid():
-            form.save()
+            nombre_nuevo = form.cleaned_data.get('congelador')
+
+            with connection.cursor() as cursor:
+                cursor.execute("SET FOREIGN_KEY_CHECKS=0")
+
+            try:
+                with transaction.atomic():
+                    if nombre_nuevo != nombre_anterior:
+                        with connection.cursor() as cursor:
+                            # Actualizar FK en estantes (to_field='congelador')
+                            cursor.execute(
+                                "UPDATE muestras_estante SET congelador_id = %s WHERE congelador_id = %s",
+                                [nombre_nuevo, nombre_anterior]
+                            )
+                            # Actualizar campo congelador en localizaciones (historial)
+                            cursor.execute(
+                                "UPDATE muestras_localizacion SET congelador = %s WHERE congelador = %s",
+                                [nombre_nuevo, nombre_anterior]
+                            )
+                    form.save()
+            finally:
+                with connection.cursor() as cursor:
+                    cursor.execute("SET FOREIGN_KEY_CHECKS=1")
+
             return redirect('detalles_congelador', nombre_congelador = form.instance.congelador)
     else:
         form = Congeladorform(instance=congelador)
@@ -2556,6 +2580,7 @@ def excel_estudios(request):
 def editar_estudio(request, id_estudio):
     # Vista para editar un estudio existente
     estudio = Estudio.objects.get(id=id_estudio)
+    nombre_anterior = estudio.nombre_estudio  # Capturar ANTES de is_valid()
     if request.method == 'POST':
         form = EstudioForm(request.POST, instance=estudio)
         if form.is_valid():
@@ -2587,13 +2612,32 @@ def editar_estudio(request, id_estudio):
                 template = loader.get_template('editar_estudio.html')
                 return HttpResponse(template.render({'form': form, 'estudio': estudio}, request))
 
-            # Preservar fechas si el usuario las dejó vacías pero había valores anteriores
-            estudio_guardado = form.save(commit=False)
-            if not form.cleaned_data.get('fecha_inicio_estudio') and estudio.fecha_inicio_estudio:
-                estudio_guardado.fecha_inicio_estudio = estudio.fecha_inicio_estudio
-            if not form.cleaned_data.get('fecha_fin_estudio') and estudio.fecha_fin_estudio:
-                estudio_guardado.fecha_fin_estudio = estudio.fecha_fin_estudio
-            estudio_guardado.save()
+            nombre_nuevo = form.cleaned_data.get('nombre_estudio')
+
+            with connection.cursor() as cursor:
+                cursor.execute("SET FOREIGN_KEY_CHECKS=0")
+
+            try:
+                with transaction.atomic():
+                    # Si el nombre cambió, actualizar las referencias en muestras y localizaciones
+                    if nombre_nuevo != nombre_anterior:
+                        with connection.cursor() as cursor:
+                            cursor.execute(
+                                "UPDATE muestras_muestra SET estudio_id = %s WHERE estudio_id = %s",
+                                [nombre_nuevo, nombre_anterior]
+                            )
+
+                    # Preservar fechas si el usuario las dejó vacías pero había valores anteriores
+                    estudio_guardado = form.save(commit=False)
+                    if not form.cleaned_data.get('fecha_inicio_estudio') and estudio.fecha_inicio_estudio:
+                        estudio_guardado.fecha_inicio_estudio = estudio.fecha_inicio_estudio
+                    if not form.cleaned_data.get('fecha_fin_estudio') and estudio.fecha_fin_estudio:
+                        estudio_guardado.fecha_fin_estudio = estudio.fecha_fin_estudio
+                    estudio_guardado.save()
+            finally:
+                with connection.cursor() as cursor:
+                    cursor.execute("SET FOREIGN_KEY_CHECKS=1")
+
             messages.info(request,'El estudio se ha modificado correctamente')
             return redirect('estudios_todos')
     else:
