@@ -64,6 +64,10 @@ Lista de Muestras
                 </select>
             </div>
             <div class="filter-field">
+                <label>Material</label>
+                <input type="text" name="id_material_texto">
+            </div>
+            <div class="filter-field">
                 <label>Estudio</label>
                 <select name="estudio" form="filter-form">
                   <option value=""></option>
@@ -72,6 +76,10 @@ Lista de Muestras
                     <option value="{{ estudio.id }}">{{ estudio.nombre_estudio }}</option>
                   {% endfor %}
                 </select>
+            </div>
+            <div class="filter-field">
+                <label>Estudio</label>
+                <input type="text" name="estudio_texto">
             </div>
 
             <div class="filter-row"></div>
@@ -132,6 +140,10 @@ Lista de Muestras
                 </select>
             </div>
             <div class="filter-field">
+                <label>Centro de procedencia</label>
+                <input type="text" name="centro_procedencia_texto">
+            </div>
+            <div class="filter-field">
                 <label>Lugar de procedencia</label>
                 <select name="lugar_procedencia" form="filter-form">
                   <option value=""></option>
@@ -140,6 +152,10 @@ Lista de Muestras
                     <option value="{{ lugar }}">{{ lugar }}</option>
                   {% endfor %}
                 </select>
+            </div>
+            <div class="filter-field">
+                <label>Lugar de procedencia</label>
+                <input type="text" name="lugar_procedencia_texto">
             </div>
             <div class="filter-field">
                 <label>Estado actual</label>
@@ -151,6 +167,10 @@ Lista de Muestras
                   <option value="ENV">Enviada</option>
                   <option value="DEST">Destruida</option>
                 </select>
+            </div>
+            <div class="filter-field">
+                <label>Estado actual</label>
+                <input type="text" name="estado_actual_texto">
             </div>
 
             <div class="filter-row"></div>

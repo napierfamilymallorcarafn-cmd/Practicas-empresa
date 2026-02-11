@@ -283,6 +283,54 @@ def muestras_todas(request):
                         except (ValueError, TypeError):
                             pass
                 muestras = muestras.filter(q_filters)
+
+    # Filtrado de material por texto libre (icontains, separado por ;)
+    if request.GET.get('id_material_texto'):
+        valores = [v.strip() for v in request.GET['id_material_texto'].split(';') if v.strip()]
+        if valores:
+            q_filters = Q()
+            for valor in valores:
+                q_filters |= Q(id_material__icontains=valor)
+            muestras = muestras.filter(q_filters)
+
+    # Filtrado de estudio por texto libre (nombre del estudio, icontains, separado por ;)
+    if request.GET.get('estudio_texto'):
+        valores = [v.strip() for v in request.GET['estudio_texto'].split(';') if v.strip()]
+        if valores:
+            q_filters = Q()
+            for valor in valores:
+                if valor.lower() == 'null' or valor.lower() == 'sin estudio':
+                    q_filters |= Q(estudio__isnull=True)
+                else:
+                    q_filters |= Q(estudio__nombre_estudio__icontains=valor)
+            muestras = muestras.filter(q_filters)
+
+    # Filtrado de centro de procedencia por texto libre (icontains, separado por ;)
+    if request.GET.get('centro_procedencia_texto'):
+        valores = [v.strip() for v in request.GET['centro_procedencia_texto'].split(';') if v.strip()]
+        if valores:
+            q_filters = Q()
+            for valor in valores:
+                q_filters |= Q(centro_procedencia__icontains=valor)
+            muestras = muestras.filter(q_filters)
+
+    # Filtrado de lugar de procedencia por texto libre (icontains, separado por ;)
+    if request.GET.get('lugar_procedencia_texto'):
+        valores = [v.strip() for v in request.GET['lugar_procedencia_texto'].split(';') if v.strip()]
+        if valores:
+            q_filters = Q()
+            for valor in valores:
+                q_filters |= Q(lugar_procedencia__icontains=valor)
+            muestras = muestras.filter(q_filters)
+
+    # Filtrado de estado actual por texto libre (icontains, separado por ;)
+    if request.GET.get('estado_actual_texto'):
+        valores = [v.strip() for v in request.GET['estado_actual_texto'].split(';') if v.strip()]
+        if valores:
+            q_filters = Q()
+            for valor in valores:
+                q_filters |= Q(estado_actual__icontains=valor)
+            muestras = muestras.filter(q_filters)
     
     # Filtrado por localizaciones
     if request.GET.get('congelador'):
