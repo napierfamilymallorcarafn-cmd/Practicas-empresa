@@ -717,6 +717,16 @@ def upload_excel(request):
                         if not datos.get(campo):
                             errores[fila]["bloqueantes"].append(f"campo_obligatorio_vacio:{campo}")
 
+                    # Validar que ningún campo contenga el carácter punto y coma (;)
+                    campos_a_validar = ['id_individuo', 'nom_lab', 'id_material', 'unidad_volumen', 
+                                       'unidad_concentracion', 'unidad_masa', 'observaciones', 'estado_inicial',
+                                       'centro_procedencia', 'lugar_procedencia', 'estado_actual', 'congelador',
+                                       'rack', 'caja', 'subposicion']
+                    for campo in campos_a_validar:
+                        valor = datos.get(campo)
+                        if valor and isinstance(valor, str) and ';' in valor:
+                            errores[fila]["bloqueantes"].append(f"caracter_invalido_semicolon:{campo}")
+
                     # Comprobar si los campos estan en el formato correcto (numéricos)
                     for campo in ['volumen_actual', 'concentracion_actual', 'masa_actual']:
                         if datos[campo] != None:
@@ -937,6 +947,7 @@ def upload_excel(request):
                         "localizacion_no_existe": "La localización no existe",
                         "campo_vacio": "Campo opcional vacío",
                         "estudio_no_existe": "El estudio no existe (se puede asignar después)",
+                        "caracter_invalido_semicolon": "El carácter ';' no está permitido en este campo",
                     }
                     # Diccionario de columnas del excel
                     columnas_excel = {}
@@ -1324,7 +1335,8 @@ def cambio_posicion(request):
                         "muestra_duplicada_excel": "Muestra duplicada dentro del Excel",
                         "localizacion_ocupada": "La subposición ya está ocupada",
                         "localizacion_no_existe": "La localización no existe",
-                        "fecha_invalida": "Fecha inválida (Formato correcto: DD-MM-AAAA)"
+                        "fecha_invalida": "Fecha inválida (Formato correcto: DD-MM-AAAA)",
+                        "caracter_invalido_semicolon": "El carácter ';' no está permitido en este campo"
                     }
                     # Diccionario de columnas del excel
                     columnas_excel = {}
@@ -1734,6 +1746,10 @@ def upload_excel_localizaciones(request):
                     for nombre_campo, valor in campos.items():
                         if valor is None:
                             errores[fila_numero]["bloqueantes"].append(f"campo_obligatorio_vacio:{nombre_campo}")
+                        # Validar que no haya punto y coma en ningún campo
+                        for nombre_campo, valor in campos.items():
+                            if valor and isinstance(valor, str) and ';' in valor:
+                                errores[fila_numero]["bloqueantes"].append(f"caracter_invalido_semicolon:{nombre_campo}")
                     
                     # Validar que ciertos campos numéricos sean enteros positivos (>0)
                     if not errores[fila_numero]["bloqueantes"]:
@@ -1883,7 +1899,8 @@ def upload_excel_localizaciones(request):
                 "caja_inconsistente": "Conflicto de caja en la misma posición",
                 "rack_inconsistente": "Conflicto de rack en la misma posición",
                 "posicion_rack_ocupada": "La posición del rack ya está ocupada por otro rack",
-                "posicion_caja_ocupada": "La posición de la caja ya está ocupada por otra caja"
+                "posicion_caja_ocupada": "La posición de la caja ya está ocupada por otra caja",
+                "caracter_invalido_semicolon": "El carácter ';' no está permitido en este campo"
             }
             
             # Diccionario de columnas del excel
@@ -2292,6 +2309,13 @@ def excel_estudios(request):
                         if not datos.get(campo):
                             errores[fila]["bloqueantes"].append(f"campo_obligatorio_vacio:{campo}")
                     
+                    # Validar que ningún campo contenga el carácter punto y coma (;)
+                    campos_a_validar = ['referencia_estudio', 'nombre_estudio', 'descripcion_estudio', 'investigador_principal']
+                    for campo in campos_a_validar:
+                        valor = datos.get(campo)
+                        if valor and isinstance(valor, str) and ';' in valor:
+                            errores[fila]["bloqueantes"].append(f"caracter_invalido_semicolon:{campo}")
+                    
                     # Detectar formato de fecha incorrecto (advertencia)
                     for campo in ['fecha_inicio_estudio', 'fecha_fin_estudio']:
                         if datos[campo] != None:
@@ -2425,7 +2449,8 @@ def excel_estudios(request):
                         "estudio_duplicado_excel": "Estudio duplicado dentro del Excel",
                         "referencia_existente": "Referencia ya existe en la base de datos",
                         "referencia_duplicada_excel": "Referencia duplicada dentro del Excel",
-                        "campo_optativo_vacio": "Campo opcional vacío"
+                        "campo_optativo_vacio": "Campo opcional vacío",
+                        "caracter_invalido_semicolon": "El carácter ';' no está permitido en este campo"
                     }
                     # Diccionario de columnas del excel
                     columnas_excel = {}
@@ -3036,7 +3061,8 @@ def upload_excel_envios(request,centro):
                     "muestra_inexistente": "La muestra no existe en la base de datos",
                     "muestra_duplicada_excel": "Muestra duplicada dentro del Excel",
                     "volumen_alto": "La muestra no tiene suficiente volumen para el envio",
-                    "estado_no_disponible": "La muestra está enviada o destruida, o no tiene un estado definido"
+                    "estado_no_disponible": "La muestra está enviada o destruida, o no tiene un estado definido",
+                    "caracter_invalido_semicolon": "El carácter ';' no está permitido en este campo"
                 }
                 # Diccionario de columnas del excel
                 columnas_excel = {}
