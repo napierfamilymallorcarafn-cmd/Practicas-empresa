@@ -1522,6 +1522,7 @@ def editar_muestra(request, nom_lab):
         'muestra': muestra,
         'congeladores': congeladores,
         'localizacion_actual': localizacion_actual,
+        'localizacion_actual_json': json.dumps(localizacion_actual),
     }
     
     return render(request, 'editar_muestra.html', context)

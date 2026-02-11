@@ -125,7 +125,7 @@ Editar muestra
 
 <script>
     // Variables para almacenar los valores actuales
-    const localizacionActual = {{ localizacion_actual|safe|default:"null" }};
+    const localizacionActual = {{ localizacion_actual_json|safe }};
     
     // Función para cargar estantes cuando se selecciona un congelador
     document.getElementById('congelador_id').addEventListener('change', async function() {
