@@ -229,13 +229,10 @@ Lista de Muestras
     <a href="/muestras/nueva" class="btn">
       ➕🧪 Nueva muestra
     </a>
-    {% if request.session.excel_file_base64 %}
       <a href="/muestras/upload_excel" class="btn">
         📤📄 Importar Excel de Muestras
       </a>
-    {% else %}
-      <a class="btn disabled" aria-disabled="true">📤📄 Importar Excel de Muestras</a>
-    {% endif %}
+
     {% endif %}
     {% if perms.muestras.can_change_estudios_web %}
       <button type="button" onclick="document.getElementById('acciones-form').elements['estudio'].click()" class="btn" id='estudio-btn' disabled>🧬 Añadir al estudio</button>
