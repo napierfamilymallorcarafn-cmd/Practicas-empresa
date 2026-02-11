@@ -1447,19 +1447,23 @@ def editar_muestra(request, id_individuo, nom_lab):
     # Obtener localización actual si existe
     localizacion_actual = None
     if muestra.subposicion:
-        subposicion_actual = muestra.subposicion
-        localizacion_actual = {
-            'congelador_id': subposicion_actual.caja.rack.estante.congelador.id,
-            'congelador_nombre': subposicion_actual.caja.rack.estante.congelador.congelador,
-            'estante_id': subposicion_actual.caja.rack.estante.id,
-            'estante_numero': subposicion_actual.caja.rack.estante.numero,
-            'rack_id': subposicion_actual.caja.rack.id,
-            'rack_numero': subposicion_actual.caja.rack.numero,
-            'caja_id': subposicion_actual.caja.id,
-            'caja_numero': subposicion_actual.caja.numero,
-            'subposicion_id': subposicion_actual.id,
-            'subposicion_numero': subposicion_actual.numero,
-        }
+        try:
+            subposicion_actual = muestra.subposicion
+            localizacion_actual = {
+                'congelador_id': subposicion_actual.caja.rack.estante.congelador.id,
+                'congelador_nombre': subposicion_actual.caja.rack.estante.congelador.congelador,
+                'estante_id': subposicion_actual.caja.rack.estante.id,
+                'estante_numero': subposicion_actual.caja.rack.estante.numero,
+                'rack_id': subposicion_actual.caja.rack.id,
+                'rack_numero': subposicion_actual.caja.rack.numero,
+                'caja_id': subposicion_actual.caja.id,
+                'caja_numero': subposicion_actual.caja.numero,
+                'subposicion_id': subposicion_actual.id,
+                'subposicion_numero': subposicion_actual.numero,
+            }
+        except (AttributeError, ObjectDoesNotExist):
+            # Si hay un problema con la localización, no mostrar datos
+            localizacion_actual = None
     
     context = {
         'form': form,
