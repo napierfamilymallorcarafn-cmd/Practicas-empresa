@@ -62,33 +62,49 @@ Editar muestra
 
             <div class="form-grid">
                 <div class="form-field">
-                    <label for="congelador">Congelador</label>
-                    <input type="text" id="congelador" name="congelador">
+                    <label for="congelador_id">Congelador</label>
+                    <select id="congelador_id" name="congelador_id">
+                        <option value="">-- Seleccionar congelador --</option>
+                        {% for congelador in congeladores %}
+                            <option value="{{ congelador.id }}" 
+                                {% if localizacion_actual.congelador_id == congelador.id %}selected{% endif %}>
+                                {{ congelador.congelador }}
+                            </option>
+                        {% endfor %}
+                    </select>
                 </div>
 
                 <div class="form-field">
-                    <label for="estante">Estante</label>
-                    <input type="text" id="estante" name="estante">
+                    <label for="estante_id">Estante</label>
+                    <select id="estante_id" name="estante_id">
+                        <option value="">-- Seleccionar estante --</option>
+                    </select>
                 </div>
 
                 <div class="form-field">
-                    <label for="rack">Rack</label>
-                    <input type="text" id="rack" name="rack">
+                    <label for="rack_id">Rack</label>
+                    <select id="rack_id" name="rack_id">
+                        <option value="">-- Seleccionar rack --</option>
+                    </select>
                 </div>
 
                 <div class="form-field">
-                    <label for="caja">Caja</label>
-                    <input type="text" id="caja" name="caja">
+                    <label for="caja_id">Caja</label>
+                    <select id="caja_id" name="caja_id">
+                        <option value="">-- Seleccionar caja --</option>
+                    </select>
                 </div>
 
                 <div class="form-field">
-                    <label for="subposicion">Subposición</label>
-                    <input type="text" id="subposicion" name="subposicion">
+                    <label for="subposicion_id">Subposición</label>
+                    <select id="subposicion_id" name="subposicion_id">
+                        <option value="">-- Seleccionar subposición --</option>
+                    </select>
                 </div>
             </div>
 
             <p class="help-text">
-                Introduzca la nueva localización física de la muestra.
+                Seleccione la nueva localización física de la muestra de los menús desplegables. Solo se mostrarán las subposiciones disponibles (vacías).
             </p>
         </div>
 
@@ -106,5 +122,169 @@ Editar muestra
     </form>
 
 </div>
+
+<script>
+    // Variables para almacenar los valores actuales
+    const localizacionActual = {{ localizacion_actual|safe|default:"null" }};
+    
+    // Función para cargar estantes cuando se selecciona un congelador
+    document.getElementById('congelador_id').addEventListener('change', async function() {
+        const congeladorId = this.value;
+        const estanteSelect = document.getElementById('estante_id');
+        const rackSelect = document.getElementById('rack_id');
+        const cajaSelect = document.getElementById('caja_id');
+        const subposicionSelect = document.getElementById('subposicion_id');
+        
+        // Limpiar selects dependientes
+        estanteSelect.innerHTML = '<option value="">-- Seleccionar estante --</option>';
+        rackSelect.innerHTML = '<option value="">-- Seleccionar rack --</option>';
+        cajaSelect.innerHTML = '<option value="">-- Seleccionar caja --</option>';
+        subposicionSelect.innerHTML = '<option value="">-- Seleccionar subposición --</option>';
+        
+        if (!congeladorId) return;
+        
+        try {
+            const nombre_congelador = document.querySelector(`#congelador_id option[value="${congeladorId}"]`).textContent;
+            const response = await fetch(`{% url 'get_estantes_por_congelador' %}?congelador=${encodeURIComponent(nombre_congelador)}`);
+            const data = await response.json();
+            
+            if (data.estantes) {
+                data.estantes.forEach(estante => {
+                    const option = document.createElement('option');
+                    option.value = estante.id;
+                    option.textContent = estante.numero;
+                    if (localizacionActual && localizacionActual.estante_id === estante.id) {
+                        option.selected = true;
+                    }
+                    estanteSelect.appendChild(option);
+                });
+                
+                // Si hay localización actual, cargar los racks
+                if (localizacionActual && localizacionActual.estante_id) {
+                    estanteSelect.value = localizacionActual.estante_id;
+                    document.getElementById('estante_id').dispatchEvent(new Event('change'));
+                }
+            }
+        } catch (error) {
+            console.error('Error cargando estantes:', error);
+        }
+    });
+    
+    // Función para cargar racks cuando se selecciona un estante
+    document.getElementById('estante_id').addEventListener('change', async function() {
+        const estanteId = this.value;
+        const rackSelect = document.getElementById('rack_id');
+        const cajaSelect = document.getElementById('caja_id');
+        const subposicionSelect = document.getElementById('subposicion_id');
+        
+        // Limpiar selects dependientes
+        rackSelect.innerHTML = '<option value="">-- Seleccionar rack --</option>';
+        cajaSelect.innerHTML = '<option value="">-- Seleccionar caja --</option>';
+        subposicionSelect.innerHTML = '<option value="">-- Seleccionar subposición --</option>';
+        
+        if (!estanteId) return;
+        
+        try {
+            const response = await fetch(`{% url 'get_racks_por_estante' %}?estante_id=${estanteId}`);
+            const data = await response.json();
+            
+            if (data.racks) {
+                data.racks.forEach(rack => {
+                    const option = document.createElement('option');
+                    option.value = rack.id;
+                    option.textContent = rack.numero;
+                    if (localizacionActual && localizacionActual.rack_id === rack.id) {
+                        option.selected = true;
+                    }
+                    rackSelect.appendChild(option);
+                });
+                
+                // Si hay localización actual, cargar las cajas
+                if (localizacionActual && localizacionActual.rack_id) {
+                    rackSelect.value = localizacionActual.rack_id;
+                    document.getElementById('rack_id').dispatchEvent(new Event('change'));
+                }
+            }
+        } catch (error) {
+            console.error('Error cargando racks:', error);
+        }
+    });
+    
+    // Función para cargar cajas cuando se selecciona un rack
+    document.getElementById('rack_id').addEventListener('change', async function() {
+        const rackId = this.value;
+        const cajaSelect = document.getElementById('caja_id');
+        const subposicionSelect = document.getElementById('subposicion_id');
+        
+        // Limpiar selects dependientes
+        cajaSelect.innerHTML = '<option value="">-- Seleccionar caja --</option>';
+        subposicionSelect.innerHTML = '<option value="">-- Seleccionar subposición --</option>';
+        
+        if (!rackId) return;
+        
+        try {
+            const response = await fetch(`{% url 'get_cajas_por_rack' %}?rack_id=${rackId}`);
+            const data = await response.json();
+            
+            if (data.cajas) {
+                data.cajas.forEach(caja => {
+                    const option = document.createElement('option');
+                    option.value = caja.id;
+                    option.textContent = caja.numero;
+                    if (localizacionActual && localizacionActual.caja_id === caja.id) {
+                        option.selected = true;
+                    }
+                    cajaSelect.appendChild(option);
+                });
+                
+                // Si hay localización actual, cargar las subposiciones
+                if (localizacionActual && localizacionActual.caja_id) {
+                    cajaSelect.value = localizacionActual.caja_id;
+                    document.getElementById('caja_id').dispatchEvent(new Event('change'));
+                }
+            }
+        } catch (error) {
+            console.error('Error cargando cajas:', error);
+        }
+    });
+    
+    // Función para cargar subposiciones cuando se selecciona una caja
+    document.getElementById('caja_id').addEventListener('change', async function() {
+        const cajaId = this.value;
+        const subposicionSelect = document.getElementById('subposicion_id');
+        
+        // Limpiar select dependiente
+        subposicionSelect.innerHTML = '<option value="">-- Seleccionar subposición --</option>';
+        
+        if (!cajaId) return;
+        
+        try {
+            const response = await fetch(`{% url 'get_subposiciones_por_caja' %}?caja_id=${cajaId}`);
+            const data = await response.json();
+            
+            if (data.subposiciones) {
+                data.subposiciones.forEach(subposicion => {
+                    const option = document.createElement('option');
+                    option.value = subposicion.id;
+                    option.textContent = subposicion.numero;
+                    if (localizacionActual && localizacionActual.subposicion_id === subposicion.id) {
+                        option.selected = true;
+                    }
+                    subposicionSelect.appendChild(option);
+                });
+            }
+        } catch (error) {
+            console.error('Error cargando subposiciones:', error);
+        }
+    });
+    
+    // Cargar datos iniciales si hay localización actual
+    document.addEventListener('DOMContentLoaded', function() {
+        if (localizacionActual && localizacionActual.congelador_id) {
+            document.getElementById('congelador_id').value = localizacionActual.congelador_id;
+            document.getElementById('congelador_id').dispatchEvent(new Event('change'));
+        }
+    });
+</script>
 
 {% endblock %}

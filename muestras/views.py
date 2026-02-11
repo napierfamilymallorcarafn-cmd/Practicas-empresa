@@ -1,4 +1,4 @@
-from django.http import HttpResponse, FileResponse
+from django.http import HttpResponse, FileResponse, JsonResponse
 from .models import Muestra, Localizacion, Estudio, Envio, Documento, historial_estudios, historial_localizaciones,agenda_envio, registro_destruido, Congelador, Estante, Rack,Caja, Subposicion
 from django.template import loader
 from .forms import MuestraForm, UploadExcel, DocumentoForm, EstudioForm, Centroform, Congeladorform
@@ -9,6 +9,7 @@ from django.shortcuts import render,redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required, permission_required
 from django.utils.safestring import mark_safe
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+import json
 import pandas as pd
 import io,base64
 # No quitar en caso de necesitar exportar las muestras en formato PDF
@@ -32,6 +33,61 @@ def principal(request):
     # Vista principal de la aplicación, muestra una página de bienvenida
     template = loader.get_template('principal.html')
     return HttpResponse(template.render(request=request))
+
+# Vistas AJAX para cargar dinámicamente las localizaciones
+@login_required
+def get_estantes_por_congelador(request):
+    """Devuelve los estantes disponibles para un congelador específico"""
+    congelador_nombre = request.GET.get('congelador', '').strip()
+    if not congelador_nombre:
+        return JsonResponse({'error': 'Congelador no especificado'}, status=400)
+    
+    estantes = Estante.objects.filter(
+        congelador__congelador__iexact=congelador_nombre
+    ).values('id', 'numero').order_by('numero')
+    
+    return JsonResponse({'estantes': list(estantes)})
+
+@login_required
+def get_racks_por_estante(request):
+    """Devuelve los racks disponibles para un estante específico"""
+    estante_id = request.GET.get('estante_id')
+    if not estante_id:
+        return JsonResponse({'error': 'Estante no especificado'}, status=400)
+    
+    racks = Rack.objects.filter(
+        estante_id=estante_id
+    ).values('id', 'numero').order_by('numero')
+    
+    return JsonResponse({'racks': list(racks)})
+
+@login_required
+def get_cajas_por_rack(request):
+    """Devuelve las cajas disponibles para un rack específico"""
+    rack_id = request.GET.get('rack_id')
+    if not rack_id:
+        return JsonResponse({'error': 'Rack no especificado'}, status=400)
+    
+    cajas = Caja.objects.filter(
+        rack_id=rack_id
+    ).values('id', 'numero').order_by('numero')
+    
+    return JsonResponse({'cajas': list(cajas)})
+
+@login_required
+def get_subposiciones_por_caja(request):
+    """Devuelve las subposiciones vacías disponibles para una caja específica"""
+    caja_id = request.GET.get('caja_id')
+    if not caja_id:
+        return JsonResponse({'error': 'Caja no especificada'}, status=400)
+    
+    subposiciones = Subposicion.objects.filter(
+        caja_id=caja_id,
+        vacia=True
+    ).values('id', 'numero').order_by('numero')
+    
+    return JsonResponse({'subposiciones': list(subposiciones)})
+
 @login_required
 
 # Vistas para Muestras
@@ -283,50 +339,60 @@ def detalles_muestra(request, nom_lab):
 @permission_required('muestras.can_add_muestras_web')
 
 
+@permission_required('muestras.can_add_muestras_web')
 def añadir_muestras(request):
     # Vista para añadir una nueva muestra, requiere permiso para añadir muestras
     if request.method == 'POST':
         form_muestra = MuestraForm(request.POST)
         if form_muestra.is_valid():
             muestra = form_muestra.save()
-            try:
-                # Asignar la localización a la muestra si se ha proporcionado una
-                numero_congelador = request.POST.getlist("congelador")
-                congelador = Congelador.objects.get(congelador = numero_congelador[0])
-                numero_estante = request.POST.getlist("estante")
-                estante = Estante.objects.get(congelador=congelador, numero=numero_estante[0])
-                numero_rack= request.POST.getlist("rack")
-                rack = Rack.objects.get(estante=estante, numero=numero_rack[0])
-                numero_caja = request.POST.getlist("caja")
-                caja = Caja.objects.get(rack=rack, numero=numero_caja[0])
-                numero_subposicion = request.POST.getlist("subposicion")
-                subposicion= Subposicion.objects.get(caja = caja, numero = numero_subposicion[0])
-                if subposicion.vacia == False:
-                    # La posición está ocupada, se guarda la muestra sin localización
-                    messages.error(request,'la posición está ocupada por otra muestra, la muestra a archivar se guardará sin localización')
-                else:
-                    # Asignar la muestra a la subposición y crear la localización y la entrada en el historial
-                    subposicion.muestra = muestra
-                    subposicion.vacia = False
-                    subposicion.save()
-                    localizacion = Localizacion.objects.create(congelador=numero_congelador[0], 
-                                                estante=numero_estante[0], 
-                                                rack=numero_rack[0], 
-                                                caja=numero_caja[0], 
-                                                subposicion=numero_subposicion[0], 
-                                                muestra=muestra)
-                    historial_localizaciones.objects.create(muestra=muestra, 
-                                                            localizacion = localizacion, 
-                                                            fecha_asignacion = timezone.now(),
-                                                            usuario_asignacion = request.user)
-                    messages.success(request, 'Muestra añadida correctamente')
-            except ObjectDoesNotExist:
-                # La localización no existe, se guarda la muestra sin localización
-                messages.error(request,'La localización indicada no existe, la muestra se guardará sin una localización asignada')
+            
+            # Manejar localización si se proporcionó
+            subposicion_id = request.POST.get("subposicion_id")
+            if subposicion_id:
+                try:
+                    subposicion = Subposicion.objects.select_for_update().get(id=subposicion_id)
+                    
+                    if subposicion.vacia:
+                        # Asignar la muestra a la subposición y crear la localización
+                        subposicion.muestra = muestra
+                        subposicion.vacia = False
+                        subposicion.save()
+                        
+                        localizacion = Localizacion.objects.create(
+                            muestra=muestra,
+                            congelador=subposicion.caja.rack.estante.congelador.congelador,
+                            estante=subposicion.caja.rack.estante.numero,
+                            rack=subposicion.caja.rack.numero,
+                            caja=subposicion.caja.numero,
+                            subposicion=subposicion.numero,
+                        )
+                        
+                        historial_localizaciones.objects.create(
+                            muestra=muestra,
+                            localizacion=localizacion,
+                            fecha_asignacion=timezone.now(),
+                            usuario_asignacion=request.user
+                        )
+                        messages.success(request, 'Muestra añadida correctamente')
+                    else:
+                        messages.error(request, 'La subposición está ocupada por otra muestra, la muestra se guardará sin localización.')
+                except Subposicion.DoesNotExist:
+                    messages.error(request, 'La subposición seleccionada no existe.')
+            else:
+                messages.success(request, 'Muestra añadida correctamente')
+            
             return redirect('muestras_todas')
     else:
         form_muestra = MuestraForm()
-    return render(request, 'añadir_muestras.html', {'form_muestra': form_muestra})
+    
+    # Obtener congeladores para los menús desplegables
+    congeladores = Congelador.objects.all().values('id', 'congelador').order_by('congelador')
+    
+    return render(request, 'añadir_muestras.html', {
+        'form_muestra': form_muestra,
+        'congeladores': congeladores,
+    })
 
 
 @permission_required('muestras.can_delete_muestras_web')
@@ -1323,67 +1389,86 @@ def editar_muestra(request, id_individuo, nom_lab):
                     if not form.cleaned_data.get('fecha_llegada') and muestra.fecha_llegada:
                         muestra_guardada.fecha_llegada = muestra.fecha_llegada
                     muestra_guardada.save()
+                    
+                    # Manejar cambio de localización si se proporcionó
+                    subposicion_id = request.POST.get("subposicion_id")
+                    if subposicion_id:
+                        try:
+                            subposicion = Subposicion.objects.select_for_update().get(id=subposicion_id)
+                            
+                            if subposicion.vacia:
+                                # Vaciar la subposición antigua si existe
+                                if Subposicion.objects.filter(muestra=muestra).exists():
+                                    subposicion_antigua = Subposicion.objects.select_for_update().get(muestra=muestra)
+                                    subposicion_antigua.muestra = None
+                                    subposicion_antigua.vacia = True
+                                    subposicion_antigua.save()
+
+                                # Asignar la nueva subposición
+                                subposicion.muestra = muestra
+                                subposicion.vacia = False
+                                subposicion.save()
+
+                                # Crear localización
+                                localizacion = Localizacion.objects.create(
+                                    muestra=muestra,
+                                    congelador=subposicion.caja.rack.estante.congelador.congelador,
+                                    estante=subposicion.caja.rack.estante.numero,
+                                    rack=subposicion.caja.rack.numero,
+                                    caja=subposicion.caja.numero,
+                                    subposicion=subposicion.numero,
+                                )
+
+                                historial_localizaciones.objects.create(
+                                    muestra=muestra,
+                                    localizacion=localizacion,
+                                    fecha_asignacion=timezone.now(),
+                                    usuario_asignacion=request.user
+                                )
+                                messages.success(request, 'Muestra editada correctamente')
+                            else:
+                                messages.error(request, 'La subposición está ocupada por otra muestra.')
+                        except Subposicion.DoesNotExist:
+                            messages.error(request, 'La subposición seleccionada no existe.')
+                    else:
+                        messages.success(request, 'Muestra editada correctamente')
             finally:
                 # Reactivar las restricciones de clave foránea
                 with connection.cursor() as cursor:
-                    cursor.execute("SET FOREIGN_KEY_CHECKS=1") 
-            campos = [
-                request.POST.get("congelador"),
-                request.POST.get("estante"),
-                request.POST.get("rack"),
-                request.POST.get("caja"),
-                request.POST.get("subposicion"),
-            ]
-
-            if not all(campos):
-                messages.success(request,'Muestra editada correctamente, pero la posición no se ha cambiado')
-                return redirect('muestras_todas')
-
-            try:
-                # Obtener la nueva localización
-                numero_congelador = request.POST.get("congelador")
-                congelador = Congelador.objects.get(congelador = numero_congelador)
-                numero_estante = request.POST.get("estante")
-                estante = Estante.objects.get(congelador=congelador, numero=numero_estante)
-                numero_rack= request.POST.get("rack")
-                rack = Rack.objects.get(estante=estante, numero=numero_rack)
-                numero_caja = request.POST.get("caja")
-                caja = Caja.objects.get(rack=rack, numero=numero_caja)
-                numero_subposicion = request.POST.get("subposicion")
-                subposicion= Subposicion.objects.get(caja = caja, numero = numero_subposicion)
-                if subposicion.vacia == False:
-                    # La subposición está ocupada
-                    messages.error(request,'la posición está ocupada por otra muestra, no se editará la posición actual de esta muestra.')
-                else:
-                    # Vaciar la subposición antigua
-                    if Subposicion.objects.filter(muestra = muestra).exists():
-                        subposicion_antigua = Subposicion.objects.get(muestra = muestra)
-                        subposicion_antigua.muestra = None
-                        subposicion_antigua.vacia = True
-                        subposicion_antigua.save()
-
-                    # Asignar la nueva subposición, actualizar la localización y generar el historial
-                    subposicion.muestra = muestra
-                    subposicion.vacia = False
-                    subposicion.save()
-                    localizacion = Localizacion.objects.create(congelador=numero_congelador[0], 
-                                                estante=numero_estante[0], 
-                                                rack=numero_rack[0], 
-                                                caja=numero_caja[0], 
-                                                subposicion=numero_subposicion[0], 
-                                                muestra=muestra)
-                    historial_localizaciones.objects.create(muestra=muestra, 
-                                                            localizacion = localizacion, 
-                                                            fecha_asignacion = timezone.now(),
-                                                            usuario_asignacion = request.user)
-                    messages.success(request,'Muestra editada correctamente')
-            except ObjectDoesNotExist:
-                # La localización no existe
-                messages.error(request,'La localización indicada no existe, no se editará la posición actual de esta muestra.')
+                    cursor.execute("SET FOREIGN_KEY_CHECKS=1")
+            
             return redirect('muestras_todas')
     else:
         form = MuestraForm(instance=muestra)
-    return render(request, 'editar_muestra.html', {'form': form, 'muestra': muestra})
+    
+    # Obtener datos para los menús desplegables
+    congeladores = Congelador.objects.all().values('id', 'congelador').order_by('congelador')
+    
+    # Obtener localización actual si existe
+    localizacion_actual = None
+    if muestra.subposicion:
+        subposicion_actual = muestra.subposicion
+        localizacion_actual = {
+            'congelador_id': subposicion_actual.caja.rack.estante.congelador.id,
+            'congelador_nombre': subposicion_actual.caja.rack.estante.congelador.congelador,
+            'estante_id': subposicion_actual.caja.rack.estante.id,
+            'estante_numero': subposicion_actual.caja.rack.estante.numero,
+            'rack_id': subposicion_actual.caja.rack.id,
+            'rack_numero': subposicion_actual.caja.rack.numero,
+            'caja_id': subposicion_actual.caja.id,
+            'caja_numero': subposicion_actual.caja.numero,
+            'subposicion_id': subposicion_actual.id,
+            'subposicion_numero': subposicion_actual.numero,
+        }
+    
+    context = {
+        'form': form,
+        'muestra': muestra,
+        'congeladores': congeladores,
+        'localizacion_actual': localizacion_actual,
+    }
+    
+    return render(request, 'editar_muestra.html', context)
 
 def descargar_plantilla(request,macro:int):
     # Vista para descargar la plantilla de Excel para subir localizaciones o muestras

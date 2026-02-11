@@ -42,7 +42,12 @@ urlpatterns = [
     path('estudios/<int:id_estudio>/editar', views.editar_estudio, name="editar_estudio"),
     path('estudios/<int:id_estudio>/eliminar', views.eliminar_estudio, name="eliminar_estudio"),
     path('estudios/<int:id_estudio>/<int:documento_id>',views.descargar_documento, name="descargar_documento"),
-    path('estudios/eliminar_documento',views.eliminar_documento, name="eliminar_documento")
+    path('estudios/eliminar_documento',views.eliminar_documento, name="eliminar_documento"),
+    # Rutas AJAX para cargar dinámicamente las localizaciones
+    path('api/get_estantes_por_congelador/', views.get_estantes_por_congelador, name='get_estantes_por_congelador'),
+    path('api/get_racks_por_estante/', views.get_racks_por_estante, name='get_racks_por_estante'),
+    path('api/get_cajas_por_rack/', views.get_cajas_por_rack, name='get_cajas_por_rack'),
+    path('api/get_subposiciones_por_caja/', views.get_subposiciones_por_caja, name='get_subposiciones_por_caja'),
 ]
 
 # Ajuste para poder servir los archivos estáticos cuando el DEBUG es True
