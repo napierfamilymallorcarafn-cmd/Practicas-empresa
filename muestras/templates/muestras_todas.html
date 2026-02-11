@@ -329,7 +329,7 @@ Lista de Muestras
       <td><input type="checkbox" name="muestra_id" value ="{{x.id}}" class="form-control"> <a href="/muestras/detalles_muestra/{{x.id_individuo}}/{{x.nom_lab}}/editar" class="chip-detalle">
                         ✍ Editar
                     </a></td>
-      <td class="wrap-text">{{ x.id_individuo }}</td>
+      <td class="wrap-text">{{ x.id_individuo|default_if_none:"" }}</td>
       <td>{{ x.nom_lab }}</td>
       {% if x.posicion_completa %}
       <td>{{x.posicion_completa}}</td>

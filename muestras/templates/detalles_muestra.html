@@ -38,7 +38,7 @@ Detalles de la Muestra
         <h2>🔖 Identificación</h2>
 
         <div class="detalle-grid">
-            <p><strong>ID individuo:</strong> {{ muestra.id_individuo }}</p>
+            <p><strong>ID individuo:</strong> {{ muestra.id_individuo|default_if_none:"" }}</p>
             <p><strong>Nombre laboratorio:</strong> {{ muestra.nom_lab }}</p>
             <p><strong>Material:</strong> {{ muestra.id_material }}</p>
             <p><strong>Observaciones:</strong>{{ muestra.observaciones }}</p>

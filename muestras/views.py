@@ -253,6 +253,12 @@ def acciones_post(request):
                     sample.volumen_actual = 0
                     sample.concentracion_actual = 0
                     sample.save()
+                    # Liberar la subposición asociada
+                    if Subposicion.objects.filter(muestra=sample).exists():
+                        subposicion = Subposicion.objects.get(muestra=sample)
+                        subposicion.vacia = True
+                        subposicion.muestra = None
+                        subposicion.save()
                     if Localizacion.objects.filter(muestra=sample).exists():
                         # Actualizar todas las localizaciones de esta muestra
                         Localizacion.objects.filter(muestra=sample).update(muestra=None)
