@@ -84,7 +84,7 @@ Archivo de muestras
                               "><svg class="icono-estado {{ clase_estado }}" width="14" height="14" viewBox="0 0 24 24">
                                 <path fill="currentColor" d="M7 2v2h1v3.586l-3.707 3.707A1 1 0 0 0 4 12v8a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-8a1 1 0 0 0-.293-.707L16 7.586V4h1V2H7Zm3 2h4v3.414l2 2V12H8V9.414l2-2V4Zm-2 10h8v6a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-6Z"/>
                               </svg>
-                              </span><input type="checkbox" name= "subposicion" value = "{{subposicion.id}}"  class="form-control"> Subposición {{ subposicion.numero }}: <a href="detalles_muestra/{{subposicion.muestra.nom_lab}}">{{subposicion.muestra.nom_lab}}</a> 
+                              </span><input type="checkbox" name= "subposicion" value = "{{subposicion.id}}"  class="form-control"> Subposición {{ subposicion.numero }}: <a href="/muestras/detalles_muestra/{{subposicion.muestra.nom_lab}}">{{subposicion.muestra.nom_lab}}</a> 
                           </li>
                         {% else %}
                         <li> <input type="checkbox" name= "subposicion" value = "{{subposicion.id}}"  class="form-control">Subposición {{ subposicion.numero }}: Vacia</li>

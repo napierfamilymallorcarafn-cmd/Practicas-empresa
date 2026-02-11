@@ -435,9 +435,9 @@ def añadir_muestras(request):
 
 
 @permission_required('muestras.can_delete_muestras_web')
-def eliminar_muestra(request, id_individuo, nom_lab):
+def eliminar_muestra(request, nom_lab):
     # Vista para eliminar una muestra, requiere permiso para eliminar muestras
-    muestra = get_object_or_404(Muestra,id_individuo=id_individuo, nom_lab=nom_lab)
+    muestra = get_object_or_404(Muestra, nom_lab=nom_lab)
     if Subposicion.objects.filter(muestra = muestra).exists():
         # Liberar la subposición asociada a la muestra antes de eliminarla
         subposicion = Subposicion.objects.get(muestra = muestra)
@@ -1408,9 +1408,9 @@ def cambio_posicion(request):
     return render(request, 'upload_excel_cambio_posicion.html', {'form': form}) 
 
 @permission_required('muestras.can_change_muestras_web')
-def editar_muestra(request, id_individuo, nom_lab):
+def editar_muestra(request, nom_lab):
     # Vista para editar una muestra existente, requiere permiso para cambiar muestras
-    muestra = Muestra.objects.get(id_individuo=id_individuo, nom_lab=nom_lab)
+    muestra = Muestra.objects.get(nom_lab=nom_lab)
     if request.method == 'POST':
         form = MuestraForm(request.POST, instance=muestra)
         if form.is_valid():

@@ -326,7 +326,7 @@ Lista de Muestras
   <tbody>
     {% for x in muestras %}
    <tr class="{% if x.estado_actual == 'DISP' %}status-available{% elif x.estado_actual == 'PENV' %}status-processing{% elif x.estado_actual == 'Destruida' %}status-destroyed{% else %}status-enviada{% endif %}">
-      <td><input type="checkbox" name="muestra_id" value ="{{x.id}}" class="form-control"> <a href="/muestras/detalles_muestra/{{x.id_individuo}}/{{x.nom_lab}}/editar" class="chip-detalle">
+      <td><input type="checkbox" name="muestra_id" value ="{{x.id}}" class="form-control"> <a href="/muestras/detalles_muestra/{{x.nom_lab}}/editar" class="chip-detalle">
                         ✍ Editar
                     </a></td>
       <td class="wrap-text">{{ x.id_individuo|default_if_none:"" }}</td>
