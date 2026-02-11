@@ -1444,26 +1444,26 @@ def editar_muestra(request, id_individuo, nom_lab):
     # Obtener datos para los menús desplegables
     congeladores = Congelador.objects.all().values('id', 'congelador').order_by('congelador')
     
-    # Obtener localización actual si existe
+    # Obtener localización actual si existe. No acceder directamente a
+    # `muestra.subposicion` porque para relaciones OneToOneDescriptor el acceso
+    # puede lanzar RelatedObjectDoesNotExist cuando no existe la relación.
     localizacion_actual = None
-    if muestra.subposicion:
-        try:
-            subposicion_actual = muestra.subposicion
-            localizacion_actual = {
-                'congelador_id': subposicion_actual.caja.rack.estante.congelador.id,
-                'congelador_nombre': subposicion_actual.caja.rack.estante.congelador.congelador,
-                'estante_id': subposicion_actual.caja.rack.estante.id,
-                'estante_numero': subposicion_actual.caja.rack.estante.numero,
-                'rack_id': subposicion_actual.caja.rack.id,
-                'rack_numero': subposicion_actual.caja.rack.numero,
-                'caja_id': subposicion_actual.caja.id,
-                'caja_numero': subposicion_actual.caja.numero,
-                'subposicion_id': subposicion_actual.id,
-                'subposicion_numero': subposicion_actual.numero,
-            }
-        except (AttributeError, ObjectDoesNotExist):
-            # Si hay un problema con la localización, no mostrar datos
-            localizacion_actual = None
+    subposicion_actual = Subposicion.objects.filter(muestra=muestra).select_related(
+        'caja__rack__estante__congelador'
+    ).first()
+    if subposicion_actual:
+        localizacion_actual = {
+            'congelador_id': subposicion_actual.caja.rack.estante.congelador.id,
+            'congelador_nombre': subposicion_actual.caja.rack.estante.congelador.congelador,
+            'estante_id': subposicion_actual.caja.rack.estante.id,
+            'estante_numero': subposicion_actual.caja.rack.estante.numero,
+            'rack_id': subposicion_actual.caja.rack.id,
+            'rack_numero': subposicion_actual.caja.rack.numero,
+            'caja_id': subposicion_actual.caja.id,
+            'caja_numero': subposicion_actual.caja.numero,
+            'subposicion_id': subposicion_actual.id,
+            'subposicion_numero': subposicion_actual.numero,
+        }
     
     context = {
         'form': form,
