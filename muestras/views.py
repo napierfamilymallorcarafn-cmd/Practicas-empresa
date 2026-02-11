@@ -309,6 +309,7 @@ def muestras_todas(request):
         'opciones_cajas': opciones_cajas,
         'muestras_page': muestras_pagina,
         'paginator': paginator,
+        'items_por_pagina': items_por_pagina,
     }
     return HttpResponse(template.render(context, request))
 @login_required
