@@ -54,14 +54,9 @@ Confirmación subida
             </li>
             <li>
                 <strong style="color:#ffa000;">Filas en amarillo</strong>:
-                campos no obligatorios vacíos, marcados con un comentario. Estudio no existe en la base de datos. 
+                uno o más campos no obligatorios están vacíos o hay columnas extras, o hay errores de formatos menores.
             </li>
-            {% if tiene_columnas_extras %}
-            <li>
-                <strong style="color:#1976d2;">Columnas extra</strong>:
-                El archivo contiene {{ numero_columnas_extras }} columna(s) adicional(es) que no están en el formato esperado: {{ columnas_extras_str }}
-            </li>
-            {% endif %}
+
         </ul>
        
     </div>

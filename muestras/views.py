@@ -212,6 +212,8 @@ def muestras_todas(request):
         'opciones_estantes': opciones_estantes,
         'opciones_racks': opciones_racks,
         'opciones_cajas': opciones_cajas,
+        'muestras_page': muestras_pagina,
+        'paginator': paginator,
     }
     return HttpResponse(template.render(context, request))
 @login_required
@@ -338,6 +340,10 @@ def eliminar_muestra(request, id_individuo, nom_lab):
 def upload_excel(request):
     # Vista para subir un archivo Excel con múltiples muestras y asociarlas a un estudio y subposición desde el excel, requiere permiso para añadir muestras
     if request.method=="POST":
+        # Limpiar sesión residual de uploads anteriores
+        if 'columnas_adicionales' in request.session:
+            del request.session['columnas_adicionales']
+        
         form = UploadExcel(request.POST, request.FILES)
         # Si el usuario confirma, se crean en la base de datos los registros validos
         if 'confirmar' in request.POST:
@@ -770,9 +776,9 @@ def upload_excel(request):
                         messages.error(request, msg)
                 
                 # Mostrar mensaje de columnas extras si existen
-                tiene_columnas_extras = bool(request.session.get('columnas_adicionales'))
-                numero_columnas_extras = len(request.session.get('columnas_adicionales', '').split(', ')) if request.session.get('columnas_adicionales') else 0
                 columnas_extras_str = request.session.get('columnas_adicionales', '')
+                tiene_columnas_extras = bool(columnas_extras_str)
+                numero_columnas_extras = len(columnas_extras_str.split(', ')) if columnas_extras_str else 0
                 if tiene_columnas_extras:
                     msg = msg_config['columnas_extras'].format(count=numero_columnas_extras, detalles=columnas_extras_str)
                     messages.warning(request, msg)
@@ -1426,6 +1432,10 @@ def localizaciones(request):
 @permission_required('muestras.can_add_localizaciones_web')
 def upload_excel_localizaciones(request):
     if request.method=="POST":
+        # Limpiar sesión residual de uploads anteriores
+        if 'columnas_adicionales' in request.session:
+            del request.session['columnas_adicionales']
+        
         # Vista para subir localizaciones desde un archivo Excel, requiere permiso para añadir localizaciones
         form = UploadExcel(request.POST, request.FILES)
         # Definir el mapeo de columnas
@@ -2239,9 +2249,9 @@ def excel_estudios(request):
                     messages.success(request, msg_config['sin_errores'])
                 
                 # Manejar columnas extras
-                tiene_columnas_extras = bool(request.session.get('columnas_adicionales'))
-                numero_columnas_extras = len(request.session.get('columnas_adicionales', '').split(', ')) if request.session.get('columnas_adicionales') else 0
                 columnas_extras_str = request.session.pop('columnas_adicionales', '')
+                tiene_columnas_extras = bool(columnas_extras_str)
+                numero_columnas_extras = len(columnas_extras_str.split(', ')) if columnas_extras_str else 0
                 if tiene_columnas_extras:
                     msg = msg_config['columnas_extras'].format(count=numero_columnas_extras, detalles=columnas_extras_str)
                     messages.warning(request, msg)
@@ -2644,6 +2654,10 @@ def upload_excel_envios(request,centro):
     # Vista para subir un archivo Excel con los datos de envío de muestras
     centro_envio = agenda_envio.objects.get(id=centro)
     if request.method=='POST':
+        # Limpiar sesión residual de uploads anteriores
+        if 'columnas_adicionales' in request.session:
+            del request.session['columnas_adicionales']
+        
         form = UploadExcel(request.POST, request.FILES)
         if 'confirmar' in request.POST:
             # Si el usuario confirma, se registran los envíos en la base de datos
