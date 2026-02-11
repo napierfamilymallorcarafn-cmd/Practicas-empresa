@@ -1,4 +1,4 @@
-from django.http import HttpResponse, FileResponse, JsonResponse
+from django.http import HttpResponse, FileResponse, JsonResponse, StreamingHttpResponse
 from .models import Muestra, Localizacion, Estudio, Envio, Documento, historial_estudios, historial_localizaciones,agenda_envio, registro_destruido, Congelador, Estante, Rack,Caja, Subposicion
 from django.template import loader
 from .forms import MuestraForm, UploadExcel, DocumentoForm, EstudioForm, Centroform, Congeladorform
@@ -25,9 +25,130 @@ from openpyxl.styles import PatternFill
 from openpyxl.comments import Comment
 from datetime import date
 from .parameters_config import get_upload_messages, get_excel_colors
+import math
 
 # Archivo que define las vistas de la aplicación, es decir, la manera de organizar,recoger y enviar al navegador los datos de los modelos del modelo 
 # Los @ son decoradores de permisos, que limitan el acceso a las vistas de los distintos usuarios en base a si tienen ese permiso activado 
+
+# ============================================================================
+# FUNCIONES AUXILIARES PARA PANTALLA DE PROGRESO (StreamingHttpResponse)
+# ============================================================================
+
+def _progress_page_start(titulo, total):
+    """
+    Devuelve el HTML inicial de la página de progreso como popup/modal.
+    Se envía al navegador como primer bloque del streaming.
+    """
+    return f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{titulo}</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: 'Segoe UI', Arial, sans-serif; background: transparent; min-height: 100vh; }}
+        .overlay {{ position: fixed; inset: 0; background: rgba(0,0,0,0.55); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); display: flex; justify-content: center; align-items: center; z-index: 99999; animation: fadeIn 0.3s ease; }}
+        @keyframes fadeIn {{ from {{ opacity: 0; }} to {{ opacity: 1; }} }}
+        @keyframes slideUp {{ from {{ opacity: 0; transform: translateY(30px) scale(0.97); }} to {{ opacity: 1; transform: translateY(0) scale(1); }} }}
+        .popup {{ background: white; border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.1); padding: 36px 34px 30px; text-align: center; max-width: 440px; width: 90%; animation: slideUp 0.35s ease; position: relative; }}
+        .popup h2 {{ color: #1a1a2e; margin-bottom: 22px; font-size: 18px; font-weight: 600; }}
+        .bar-wrapper {{ background: #e9ecef; border-radius: 8px; height: 26px; overflow: hidden; margin-bottom: 10px; position: relative; }}
+        .bar {{ background: linear-gradient(90deg, #4361ee, #3a0ca3); height: 100%; border-radius: 8px; transition: width 0.25s ease; width: 0%; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: 700; min-width: 40px; }}
+        .bar.done {{ background: linear-gradient(90deg, #2dc653, #1b9e3e); }}
+        .bar.error {{ background: linear-gradient(90deg, #e63946, #c1121f); }}
+        .info {{ color: #555; font-size: 14px; margin-top: 10px; min-height: 22px; }}
+        .spinner {{ display: inline-block; width: 16px; height: 16px; border: 2.5px solid #ddd; border-top-color: #4361ee; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 6px; }}
+        @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+        .counter {{ color: #888; font-size: 12px; margin-top: 5px; }}
+        .icon-ok {{ display: none; font-size: 34px; margin-bottom: 8px; }}
+        .icon-ok.show {{ display: block; animation: slideUp 0.3s ease; }}
+    </style>
+</head>
+<body>
+    <div class="overlay">
+        <div class="popup">
+            <div class="icon-ok" id="picon"></div>
+            <h2>{titulo}</h2>
+            <div class="bar-wrapper">
+                <div class="bar" id="pbar">0%</div>
+            </div>
+            <p class="info" id="ptxt"><span class="spinner"></span>Preparando {total} registros&hellip;</p>
+            <p class="counter" id="pcnt">0 / {total}</p>
+        </div>
+    </div>
+{'<!-- ' + 'x' * 1024 + ' -->'}
+"""
+
+
+def _progress_update(current, total):
+    """
+    Devuelve un bloque <script> que actualiza la barra de progreso.
+    Enviar como bloque intermedio del streaming.
+    """
+    pct = (current / total * 100) if total > 0 else 100
+    return f"""<script>
+document.getElementById('pbar').style.width='{pct:.1f}%';
+document.getElementById('pbar').textContent='{pct:.0f}%';
+document.getElementById('ptxt').innerHTML='<span class="spinner"></span>Procesando fila {current} de {total}';
+document.getElementById('pcnt').textContent='{current} / {total}';
+</script>
+"""
+
+
+def _progress_done(redirect_url, message='¡Proceso completado correctamente!'):
+    """
+    Devuelve un bloque <script> que muestra finalización y redirige.
+    Enviar como último bloque del streaming.
+    """
+    return f"""<script>
+document.getElementById('pbar').style.width='100%';
+document.getElementById('pbar').textContent='100%';
+document.getElementById('pbar').classList.add('done');
+document.getElementById('picon').textContent='\\u2705';
+document.getElementById('picon').classList.add('show');
+document.getElementById('ptxt').innerHTML='{message}';
+document.getElementById('pcnt').textContent='Redirigiendo...';
+setTimeout(function(){{
+    document.querySelector('.overlay').style.transition='opacity 0.4s ease';
+    document.querySelector('.overlay').style.opacity='0';
+    setTimeout(function(){{ window.location.href='{redirect_url}'; }}, 400);
+}}, 900);
+</script>
+</body></html>"""
+
+
+def _progress_error(error_message, redirect_url=None):
+    """
+    Devuelve un bloque <script> que muestra error en el popup.
+    """
+    redir = ""
+    if redirect_url:
+        redir = f"""setTimeout(function(){{
+    document.querySelector('.overlay').style.transition='opacity 0.4s ease';
+    document.querySelector('.overlay').style.opacity='0';
+    setTimeout(function(){{ window.location.href='{redirect_url}'; }}, 400);
+}}, 2500);"""
+    safe_msg = str(error_message).replace("'", "\\'").replace("\n", " ")
+    return f"""<script>
+document.getElementById('pbar').style.width='100%';
+document.getElementById('pbar').textContent='Error';
+document.getElementById('pbar').classList.add('error');
+document.getElementById('picon').textContent='\\u274C';
+document.getElementById('picon').classList.add('show');
+document.getElementById('ptxt').innerHTML='Error: {safe_msg}';
+document.getElementById('pcnt').textContent='';
+{redir}
+</script>
+</body></html>"""
+
+
+def _should_update(i, total, min_updates=80):
+    """Devuelve True si debemos enviar actualización de progreso (evita enviar demasiados)."""
+    if total <= min_updates:
+        return True
+    step = max(1, total // min_updates)
+    return (i + 1) % step == 0 or i + 1 == total
 @login_required
 def principal(request):
     # Vista principal de la aplicación, muestra una página de bienvenida
@@ -450,108 +571,115 @@ def eliminar_muestra(request, nom_lab):
     return redirect('muestras_todas')
 @permission_required('muestras.can_add_muestras_web')
 def upload_excel(request):
+    # Mostrar confirmación después de validación con progreso
+    if request.GET.get('mostrar_confirmacion') and 'confirmacion_pendiente' in request.session:
+        datos_conf = request.session.pop('confirmacion_pendiente')
+        for msg in datos_conf.get('mensajes', []):
+            getattr(messages, msg['level'])(request, msg['text'])
+        return render(request, datos_conf['template'], datos_conf.get('context', {}))
     # Vista para subir un archivo Excel con múltiples muestras y asociarlas a un estudio y subposición desde el excel, requiere permiso para añadir muestras
     if request.method=="POST":
         form = UploadExcel(request.POST, request.FILES)
         # Si el usuario confirma, se crean en la base de datos los registros validos
         if 'confirmar' in request.POST:
-            messages.success(request, 'Las muestras sin errores graves se han añadido correctamente')
             filas_validas = request.session.get('filas_validas',[])
-            with transaction.atomic():
-                for datos in filas_validas:
-                    # Antes de crear, eliminar del dict los campos marcados como advertencia
-                    errores_sesion = request.session.get('errores', {})
-                    fila_num = datos.get('fila')
-                    advertencias = []
-                    if fila_num:
-                        advertencias = errores_sesion.get(fila_num, {}).get('advertencias', [])
-                    # Si hay advertencias relacionadas con campos, no guardarlas
-                    for warn in advertencias:
-                        if warn == 'fecha_incoherente':
-                            datos['fecha_extraccion'] = None
-                            datos['fecha_llegada'] = None
-                        elif ':' in warn:
-                            _, campo = warn.split(':', 1)
-                            if campo in datos:
-                                datos[campo] = None
+            errores_sesion = request.session.get('errores', {})
+            total = len(filas_validas)
 
-                    # Procesar fechas de forma robusta (si no fueron eliminadas por advertencias)
-                    fecha_extraccion = None
-                    fecha_llegada = None
-                    if datos.get("fecha_extraccion"):
-                        try:
-                            fecha_extraccion = date.fromisoformat(datos["fecha_extraccion"])
-                        except Exception:
+            def gen_confirmar_muestras():
+                yield _progress_page_start('Importando muestras', total)
+                try:
+                    with transaction.atomic():
+                        for i, datos in enumerate(filas_validas):
+                            # Antes de crear, eliminar del dict los campos marcados como advertencia
+                            fila_num = datos.get('fila')
+                            advertencias = []
+                            if fila_num:
+                                advertencias = errores_sesion.get(fila_num, {}).get('advertencias', [])
+                            for warn in advertencias:
+                                if warn == 'fecha_incoherente':
+                                    datos['fecha_extraccion'] = None
+                                    datos['fecha_llegada'] = None
+                                elif ':' in warn:
+                                    _, campo = warn.split(':', 1)
+                                    if campo in datos:
+                                        datos[campo] = None
+
                             fecha_extraccion = None
-                    if datos.get("fecha_llegada"):
-                        try:
-                            fecha_llegada = date.fromisoformat(datos["fecha_llegada"])
-                        except Exception:
                             fecha_llegada = None
-                    estudio = None
-                    if datos.get("estudio"):
-                        estudio = Estudio.objects.get(id = datos["estudio"])
+                            if datos.get("fecha_extraccion"):
+                                try:
+                                    fecha_extraccion = date.fromisoformat(datos["fecha_extraccion"])
+                                except Exception:
+                                    fecha_extraccion = None
+                            if datos.get("fecha_llegada"):
+                                try:
+                                    fecha_llegada = date.fromisoformat(datos["fecha_llegada"])
+                                except Exception:
+                                    fecha_llegada = None
+                            estudio = None
+                            if datos.get("estudio"):
+                                estudio = Estudio.objects.get(id=datos["estudio"])
 
-                    # Crear la muestra (id_individuo puede ser None ahora)
-                    muestra = Muestra.objects.create(
-                        id_individuo=datos.get("id_individuo"),
-                        nom_lab=datos["nom_lab"],
-                        id_material=datos.get("id_material"),
-                        volumen_actual=datos.get("volumen_actual"),
-                        unidad_volumen=datos.get("unidad_volumen"),
-                        concentracion_actual=datos.get("concentracion_actual"),
-                        unidad_concentracion=datos.get("unidad_concentracion"),
-                        masa_actual=datos.get("masa_actual"),
-                        unidad_masa=datos.get("unidad_masa"),
-                        fecha_extraccion=fecha_extraccion,
-                        fecha_llegada=fecha_llegada,
-                        observaciones=datos.get("observaciones"),
-                        estado_inicial=datos.get("estado_inicial"),
-                        centro_procedencia=datos.get("centro_procedencia"),
-                        lugar_procedencia=datos.get("lugar_procedencia"),
-                        estado_actual=datos.get("estado_actual") or None,
-                        estudio=estudio,
-                    )
-
-                    # Si se proporcionó una subposición válida, asignarla
-                    subposicion_id = datos.get("subposicion_id")
-                    if subposicion_id:
-                        try:
-                            subposicion = Subposicion.objects.select_for_update().get(id=subposicion_id)
-                        except Subposicion.DoesNotExist:
-                            # Esta situación no debería ocurrir porque ya validamos antes, pero la manejamos defensivamente
-                            subposicion = None
-
-                        if subposicion:
-                            localizacion = Localizacion.objects.create(
-                                muestra=muestra,
-                                congelador=subposicion.caja.rack.estante.congelador.congelador,
-                                estante=subposicion.caja.rack.estante.numero,
-                                rack=subposicion.caja.rack.numero,
-                                caja=subposicion.caja.numero,
-                                subposicion=subposicion.numero,
+                            muestra = Muestra.objects.create(
+                                id_individuo=datos.get("id_individuo"),
+                                nom_lab=datos["nom_lab"],
+                                id_material=datos.get("id_material"),
+                                volumen_actual=datos.get("volumen_actual"),
+                                unidad_volumen=datos.get("unidad_volumen"),
+                                concentracion_actual=datos.get("concentracion_actual"),
+                                unidad_concentracion=datos.get("unidad_concentracion"),
+                                masa_actual=datos.get("masa_actual"),
+                                unidad_masa=datos.get("unidad_masa"),
+                                fecha_extraccion=fecha_extraccion,
+                                fecha_llegada=fecha_llegada,
+                                observaciones=datos.get("observaciones"),
+                                estado_inicial=datos.get("estado_inicial"),
+                                centro_procedencia=datos.get("centro_procedencia"),
+                                lugar_procedencia=datos.get("lugar_procedencia"),
+                                estado_actual=datos.get("estado_actual") or None,
+                                estudio=estudio,
                             )
 
-                            subposicion.vacia = False
-                            subposicion.muestra = muestra
-                            subposicion.save()
+                            subposicion_id = datos.get("subposicion_id")
+                            if subposicion_id:
+                                try:
+                                    subposicion = Subposicion.objects.select_for_update().get(id=subposicion_id)
+                                except Subposicion.DoesNotExist:
+                                    subposicion = None
+                                if subposicion:
+                                    localizacion = Localizacion.objects.create(
+                                        muestra=muestra,
+                                        congelador=subposicion.caja.rack.estante.congelador.congelador,
+                                        estante=subposicion.caja.rack.estante.numero,
+                                        rack=subposicion.caja.rack.numero,
+                                        caja=subposicion.caja.numero,
+                                        subposicion=subposicion.numero,
+                                    )
+                                    subposicion.vacia = False
+                                    subposicion.muestra = muestra
+                                    subposicion.save()
+                                    historial_localizaciones.objects.create(
+                                        muestra=muestra,
+                                        localizacion=localizacion,
+                                        fecha_asignacion=timezone.now(),
+                                        usuario_asignacion=request.user
+                                    )
 
-                            historial_localizaciones.objects.create(
-                                muestra=muestra,
-                                localizacion=localizacion,
-                                fecha_asignacion=timezone.now(),
-                                usuario_asignacion=request.user
-                            )
+                            if datos.get("estudio"):
+                                historial_estudios.objects.create(
+                                    muestra=muestra,
+                                    estudio=estudio,
+                                    fecha_asignacion=timezone.now(),
+                                    usuario_asignacion=request.user
+                                )
+                            if _should_update(i, total):
+                                yield _progress_update(i + 1, total)
+                    yield _progress_done('/muestras/', 'Muestras importadas correctamente')
+                except Exception as e:
+                    yield _progress_error(str(e))
 
-                    # Registrar historial de estudios si aplica
-                    if datos.get("estudio"):
-                        historial_estudios.objects.create(
-                            muestra=muestra,
-                            estudio=estudio,
-                            fecha_asignacion=timezone.now(),
-                            usuario_asignacion=request.user
-                        )
-            return redirect('muestras_todas')
+            return StreamingHttpResponse(gen_confirmar_muestras(), content_type='text/html')
         # Si el usuario cancela, no se añade nada a la base de datos
         elif 'cancelar' in request.POST:
             messages.error(request,'Las muestras no se han añadido')
@@ -644,12 +772,6 @@ def upload_excel(request):
 
                     return str(value).strip()
 
-                # Crear estructuras previas del excel
-                filas_validas = []
-                errores = {}
-                nom_lab_excel = set()
-                numero_registros = 0
-                
                 # Definir campos obligatorios para una muestra (solo nombre de laboratorio)
                 obligatorios = ["nom_lab"]
 
@@ -670,249 +792,269 @@ def upload_excel(request):
 
                     'muestras_existentes': set(Muestra.objects.values_list('nom_lab',flat=True))
                 }
-                
 
-                # Recorrer el df para detectar errores y normalizar
-                for idx, row in df.iterrows():
-                    numero_registros += 1
-                    fila = idx + 2 
-                    errores[fila]={"bloqueantes":[],"advertencias":[]}
-                    datos = {
-                        "id_individuo":norm(row['id_individuo']),
-                        "nom_lab":norm(row['nom_lab']),
-                        "id_material":norm(row['id_material']),
-                        "volumen_actual":norm_code(row['volumen_actual']),
-                        "unidad_volumen":norm(row['unidad_volumen']),
-                        "concentracion_actual":norm_code(row['concentracion_actual']),
-                        "unidad_concentracion":norm(row['unidad_concentracion']),
-                        "masa_actual":norm_code(row['masa_actual']),
-                        "unidad_masa":norm(row['unidad_masa']),
-                        "fecha_extraccion":norm(row['fecha_extraccion']),
-                        "fecha_llegada":norm(row['fecha_llegada']),
-                        "observaciones":norm(row['observaciones']),
-                        "estado_inicial":norm(row['estado_inicial']),
-                        "centro_procedencia":norm(row['centro_procedencia']),
-                        "lugar_procedencia":norm(row['lugar_procedencia']),
-                        "estado_actual":norm(row['estado_actual']),
-                        "congelador":(norm_code(row['congelador']) or None),
-                        "estante":norm_code(row['estante']),
-                        "posicion_rack_estante":norm_code(row['posicion_rack_estante']),
-                        "rack":(norm_code(row['rack']) or None),
-                        "posicion_caja_rack":norm_code(row['posicion_caja_rack']),
-                        "caja":(norm_code(row['caja']) or None),
-                        "subposicion":(norm_code(row['subposicion']) or None),
-                        "estudio":norm_code(row['estudio'])  
-                    }
-                    # Normalizar a minúsculas los campos textuales relevantes
-                    if datos['congelador'] is not None:
-                        datos['congelador'] = str(datos['congelador']).lower()
-                    if datos['rack'] is not None:
-                        datos['rack'] = str(datos['rack']).lower()
-                    if datos['caja'] is not None:
-                        datos['caja'] = str(datos['caja']).lower()
-                    if datos['subposicion'] is not None:
-                        datos['subposicion'] = str(datos['subposicion']).lower()
+                total_filas = len(df)
 
-                    for campo in obligatorios:
-                        if not datos.get(campo):
-                            errores[fila]["bloqueantes"].append(f"campo_obligatorio_vacio:{campo}")
+                def gen_validar_muestras():
+                    errores = {}
+                    filas_validas = []
+                    numero_registros = 0
+                    nom_lab_excel = set()
 
-                    # Validar que ningún campo contenga el carácter punto y coma (;)
-                    campos_a_validar = ['id_individuo', 'nom_lab', 'id_material', 'unidad_volumen', 
-                                       'unidad_concentracion', 'unidad_masa', 'observaciones', 'estado_inicial',
-                                       'centro_procedencia', 'lugar_procedencia', 'estado_actual', 'congelador',
-                                       'rack', 'caja', 'subposicion']
-                    for campo in campos_a_validar:
-                        valor = datos.get(campo)
-                        if valor and isinstance(valor, str) and ';' in valor:
-                            errores[fila]["bloqueantes"].append(f"caracter_invalido_semicolon:{campo}")
+                    yield _progress_page_start('Validando muestras', total_filas)
 
-                    # Comprobar si los campos estan en el formato correcto (numéricos)
-                    for campo in ['volumen_actual', 'concentracion_actual', 'masa_actual']:
-                        if datos[campo] != None:
-                            try:
-                                valor_numerico = float(datos[campo])
-                                # Validar que sea positivo o cero (≥0)
-                                if valor_numerico < 0:
-                                    errores[fila]["advertencias"].append(f"valor_negativo:{campo}")
-                                    datos[campo] = None  # No asignar valores negativos
-                                else:
-                                    datos[campo] = valor_numerico
-                            except (TypeError, ValueError):
-                                errores[fila]["advertencias"].append(f"formato_incorrecto:{campo}")
-                                datos[campo] = None  # No asignar valores con formato incorrecto
-                    
-                    # Validar estado_actual: debe ser uno de los valores permitidos (case-insensitive)
-                    estado_actual_validos = {
-                        'disponible': 'DISP',
-                        'enviada': 'ENV',
-                        'parcialmente enviada': 'PENV',
-                        'enviada parcialmente': 'PENV',
-                        'destruida': 'DEST',
-                        'disp': 'DISP',
-                        'env': 'ENV',
-                        'penv': 'PENV',
-                        'dest': 'DEST'
-                    }
-                    if datos.get('estado_actual'):
-                        estado_normalizado = str(datos['estado_actual']).strip().lower()
-                        if estado_normalizado in estado_actual_validos:
-                            datos['estado_actual'] = estado_actual_validos[estado_normalizado]
-                        else:
-                            errores[fila]["advertencias"].append("estado_actual_invalido")
-                            datos['estado_actual'] = None
+                    # Recorrer el df para detectar errores y normalizar
+                    for idx, row in df.iterrows():
+                        numero_registros += 1
+                        fila = idx + 2 
+                        errores[fila]={"bloqueantes":[],"advertencias":[]}
+                        datos = {
+                            "id_individuo":norm(row['id_individuo']),
+                            "nom_lab":norm(row['nom_lab']),
+                            "id_material":norm(row['id_material']),
+                            "volumen_actual":norm_code(row['volumen_actual']),
+                            "unidad_volumen":norm(row['unidad_volumen']),
+                            "concentracion_actual":norm_code(row['concentracion_actual']),
+                            "unidad_concentracion":norm(row['unidad_concentracion']),
+                            "masa_actual":norm_code(row['masa_actual']),
+                            "unidad_masa":norm(row['unidad_masa']),
+                            "fecha_extraccion":norm(row['fecha_extraccion']),
+                            "fecha_llegada":norm(row['fecha_llegada']),
+                            "observaciones":norm(row['observaciones']),
+                            "estado_inicial":norm(row['estado_inicial']),
+                            "centro_procedencia":norm(row['centro_procedencia']),
+                            "lugar_procedencia":norm(row['lugar_procedencia']),
+                            "estado_actual":norm(row['estado_actual']),
+                            "congelador":(norm_code(row['congelador']) or None),
+                            "estante":norm_code(row['estante']),
+                            "posicion_rack_estante":norm_code(row['posicion_rack_estante']),
+                            "rack":(norm_code(row['rack']) or None),
+                            "posicion_caja_rack":norm_code(row['posicion_caja_rack']),
+                            "caja":(norm_code(row['caja']) or None),
+                            "subposicion":(norm_code(row['subposicion']) or None),
+                            "estudio":norm_code(row['estudio'])  
+                        }
+                        # Normalizar a minúsculas los campos textuales relevantes
+                        if datos['congelador'] is not None:
+                            datos['congelador'] = str(datos['congelador']).lower()
+                        if datos['rack'] is not None:
+                            datos['rack'] = str(datos['rack']).lower()
+                        if datos['caja'] is not None:
+                            datos['caja'] = str(datos['caja']).lower()
+                        if datos['subposicion'] is not None:
+                            datos['subposicion'] = str(datos['subposicion']).lower()
+
+                        for campo in obligatorios:
+                            if not datos.get(campo):
+                                errores[fila]["bloqueantes"].append(f"campo_obligatorio_vacio:{campo}")
+
+                        # Validar que ningún campo contenga el carácter punto y coma (;)
+                        campos_a_validar = ['id_individuo', 'nom_lab', 'id_material', 'unidad_volumen', 
+                                           'unidad_concentracion', 'unidad_masa', 'observaciones', 'estado_inicial',
+                                           'centro_procedencia', 'lugar_procedencia', 'estado_actual', 'congelador',
+                                           'rack', 'caja', 'subposicion']
+                        for campo in campos_a_validar:
+                            valor = datos.get(campo)
+                            if valor and isinstance(valor, str) and ';' in valor:
+                                errores[fila]["bloqueantes"].append(f"caracter_invalido_semicolon:{campo}")
+
+                        # Comprobar si los campos estan en el formato correcto (numéricos)
+                        for campo in ['volumen_actual', 'concentracion_actual', 'masa_actual']:
+                            if datos[campo] != None:
+                                try:
+                                    valor_numerico = float(datos[campo])
+                                    # Validar que sea positivo o cero (≥0)
+                                    if valor_numerico < 0:
+                                        errores[fila]["advertencias"].append(f"valor_negativo:{campo}")
+                                        datos[campo] = None  # No asignar valores negativos
+                                    else:
+                                        datos[campo] = valor_numerico
+                                except (TypeError, ValueError):
+                                    errores[fila]["advertencias"].append(f"formato_incorrecto:{campo}")
+                                    datos[campo] = None  # No asignar valores con formato incorrecto
                         
-                    # Validar y normalizar fechas (esperado formato día-mes-año o fecha Excel)
-                    for campo in ['fecha_extraccion', 'fecha_llegada']:
-                        if datos[campo] != None:
+                        # Validar estado_actual: debe ser uno de los valores permitidos (case-insensitive)
+                        estado_actual_validos = {
+                            'disponible': 'DISP',
+                            'enviada': 'ENV',
+                            'parcialmente enviada': 'PENV',
+                            'enviada parcialmente': 'PENV',
+                            'destruida': 'DEST',
+                            'disp': 'DISP',
+                            'env': 'ENV',
+                            'penv': 'PENV',
+                            'dest': 'DEST'
+                        }
+                        if datos.get('estado_actual'):
+                            estado_normalizado = str(datos['estado_actual']).strip().lower()
+                            if estado_normalizado in estado_actual_validos:
+                                datos['estado_actual'] = estado_actual_validos[estado_normalizado]
+                            else:
+                                errores[fila]["advertencias"].append("estado_actual_invalido")
+                                datos['estado_actual'] = None
+                            
+                        # Validar y normalizar fechas (esperado formato día-mes-año o fecha Excel)
+                        for campo in ['fecha_extraccion', 'fecha_llegada']:
+                            if datos[campo] != None:
+                                try:
+                                    # Forzar interpretación día/mes/año cuando sea una cadena
+                                    fecha = pd.to_datetime(datos[campo], dayfirst=True, errors='raise')
+                                    datos[campo] = fecha.date().isoformat()
+                                except Exception:
+                                    errores[fila]["bloqueantes"].append(f"fecha_invalida:{campo}")
+
+                        # Si ambas fechas están presentes, comprobar coherencia: llegada >= extracción
+                        if datos.get('fecha_extraccion') and datos.get('fecha_llegada'):
                             try:
-                                # Forzar interpretación día/mes/año cuando sea una cadena
-                                fecha = pd.to_datetime(datos[campo], dayfirst=True, errors='raise')
-                                datos[campo] = fecha.date().isoformat()
+                                fe_extr = date.fromisoformat(datos['fecha_extraccion'])
+                                fe_lleg = date.fromisoformat(datos['fecha_llegada'])
+                                if fe_lleg < fe_extr:
+                                    errores[fila]["bloqueantes"].append('fecha_incoherente')
                             except Exception:
-                                errores[fila]["bloqueantes"].append(f"fecha_invalida:{campo}")
+                                # Si por alguna razón no se pueden convertir, marcar como fecha inválida y bloquear
+                                errores[fila]["bloqueantes"].append('fecha_invalida:fecha_extraccion')
+                                    
+                        # Comprobar si hay duplicados entre las muestras dentro del excel o en la base de datos
+                        nom_lab = datos["nom_lab"]
 
-                    # Si ambas fechas están presentes, comprobar coherencia: llegada >= extracción
-                    if datos.get('fecha_extraccion') and datos.get('fecha_llegada'):
-                        try:
-                            fe_extr = date.fromisoformat(datos['fecha_extraccion'])
-                            fe_lleg = date.fromisoformat(datos['fecha_llegada'])
-                            if fe_lleg < fe_extr:
-                                errores[fila]["bloqueantes"].append('fecha_incoherente')
-                        except Exception:
-                            # Si por alguna razón no se pueden convertir, marcar como fecha inválida y bloquear
-                            errores[fila]["bloqueantes"].append('fecha_invalida:fecha_extraccion')
-                                
-                    # Comprobar si hay duplicados entre las muestras dentro del excel o en la base de datos
-                    nom_lab = datos["nom_lab"]
-
-                    if nom_lab in cache["muestras_existentes"]:
-                        errores[fila]["bloqueantes"].append("muestra_duplicada_bd")
-                    if nom_lab in nom_lab_excel:
-                        errores[fila]["bloqueantes"].append("muestra_duplicada_excel")
-                    else:
-                        nom_lab_excel.add(nom_lab)
-                    
-                    # Comprobar si el estudio existe en la base de datos
-                    estudio_id = datos.get("estudio")
-                    if estudio_id:
-                        try:
-                            estudio_id = int(estudio_id)  # Convertir a integer para buscar en BD
-                            estudio = cache["estudios"].get(estudio_id)
-                            if not estudio:
+                        if nom_lab in cache["muestras_existentes"]:
+                            errores[fila]["bloqueantes"].append("muestra_duplicada_bd")
+                        if nom_lab in nom_lab_excel:
+                            errores[fila]["bloqueantes"].append("muestra_duplicada_excel")
+                        else:
+                            nom_lab_excel.add(nom_lab)
+                        
+                        # Comprobar si el estudio existe en la base de datos
+                        estudio_id = datos.get("estudio")
+                        if estudio_id:
+                            try:
+                                estudio_id = int(estudio_id)  # Convertir a integer para buscar en BD
+                                estudio = cache["estudios"].get(estudio_id)
+                                if not estudio:
+                                    errores[fila]["advertencias"].append("estudio_no_existe")
+                                    datos["estudio"] = None
+                                else:
+                                    datos["estudio"] = estudio.id
+                            except (ValueError, TypeError):
                                 errores[fila]["advertencias"].append("estudio_no_existe")
                                 datos["estudio"] = None
+
+                        # Comprobar si la localización está ocupada o existe únicamente si se han proporcionado datos de posición
+                        if datos.get("congelador") or datos.get("estante") or datos.get("rack") or datos.get("caja") or datos.get("subposicion"):
+                            key = (
+                                datos["congelador"],
+                                datos["estante"],
+                                datos["rack"],
+                                datos["caja"],
+                                datos["subposicion"]
+                            )
+
+                            subposicion = cache["subposiciones"].get(key)
+
+                            if not subposicion:
+                                errores[fila]["bloqueantes"].append("localizacion_no_existe")
+                            elif not subposicion.vacia:
+                                errores[fila]["bloqueantes"].append("localizacion_ocupada")
                             else:
-                                datos["estudio"] = estudio.id
-                        except (ValueError, TypeError):
-                            errores[fila]["advertencias"].append("estudio_no_existe")
-                            datos["estudio"] = None
-
-                    # Comprobar si la localización está ocupada o existe únicamente si se han proporcionado datos de posición
-                    if datos.get("congelador") or datos.get("estante") or datos.get("rack") or datos.get("caja") or datos.get("subposicion"):
-                        key = (
-                            datos["congelador"],
-                            datos["estante"],
-                            datos["rack"],
-                            datos["caja"],
-                            datos["subposicion"]
-                        )
-
-                        subposicion = cache["subposiciones"].get(key)
-
-                        if not subposicion:
-                            errores[fila]["bloqueantes"].append("localizacion_no_existe")
-                        elif not subposicion.vacia:
-                            errores[fila]["bloqueantes"].append("localizacion_ocupada")
+                                datos["subposicion_id"] = subposicion.id
                         else:
-                            datos["subposicion_id"] = subposicion.id
+                            # No se proporcionó posición; la muestra quedará sin localización asignada
+                            datos["subposicion_id"] = None
+
+                        # Detectar campos opcionales vacios (solo 'nom_lab' es obligatorio)
+                        opcionales = [
+                            'id_individuo',
+                            'id_material',
+                            'volumen_actual',
+                            'unidad_volumen',
+                            'concentracion_actual',
+                            'unidad_concentracion',
+                            'masa_actual',
+                            'unidad_masa',
+                            'fecha_extraccion',
+                            'fecha_llegada',
+                            'observaciones',
+                            'estado_inicial',
+                            'estado_actual',
+                            'estudio',
+                            'centro_procedencia',
+                            'lugar_procedencia',
+                            # Posición (tratar como opcional; si se proporcionan, se validan arriba)
+                            'congelador',
+                            'estante',
+                            'posicion_rack_estante',
+                            'rack',
+                            'posicion_caja_rack',
+                            'caja',
+                            'subposicion'
+                        ]
+                        for campo in opcionales:
+                            if datos.get(campo) is None:
+                                errores[fila]["advertencias"].append(f"campo_vacio:{campo}")
+
+                        # Registrar filas validas
+                        if not errores[fila]["bloqueantes"]:
+                            datos['fila'] = fila
+                            filas_validas.append(datos)
+
+                        if _should_update(idx, total_filas):
+                            yield _progress_update(idx + 1, total_filas)
+                    
+                    # Guardar en la sesión las filas validas y los errores detectados
+                    request.session['filas_validas']=filas_validas
+                    request.session['errores'] = errores
+
+                    # Obtener configuración de mensajes para muestras
+                    msg_config = get_upload_messages('muestras')
+                    
+                    # Contar errores
+                    numero_errores_bloqueantes = 0
+                    numero_errores_advertencia = 0
+                    for fila in errores:
+                        if errores[fila]['bloqueantes']:
+                            numero_errores_bloqueantes += 1
+                        if errores[fila]["advertencias"]:
+                            numero_errores_advertencia += 1
+
+                    # Construir lista de mensajes para confirmación
+                    mensajes = []
+                    mensajes.append({'level': 'info', 'text': f'{msg_config["titulo_inicial"]} {numero_registros} registros.'})
+
+                    if numero_errores_bloqueantes == 0 and numero_errores_advertencia == 0:
+                        mensajes.append({'level': 'success', 'text': msg_config['sin_errores']})
                     else:
-                        # No se proporcionó posición; la muestra quedará sin localización asignada
-                        datos["subposicion_id"] = None
+                        if numero_errores_advertencia > 0:
+                            msg = msg_config['con_advertencias'].format(count=numero_errores_advertencia)
+                            mensajes.append({'level': 'warning', 'text': msg})
+                        if numero_errores_bloqueantes > 0:
+                            msg = msg_config['con_bloqueantes'].format(count=numero_errores_bloqueantes)
+                            mensajes.append({'level': 'error', 'text': msg})
+                    
+                    # Mostrar mensaje de columnas extras si existen
+                    columnas_extras_str = request.session.get('columnas_adicionales', '')
+                    tiene_columnas_extras = bool(columnas_extras_str)
+                    numero_columnas_extras = len(columnas_extras_str.split(', ')) if columnas_extras_str else 0
+                    if tiene_columnas_extras:
+                        msg = msg_config['columnas_extras'].format(count=numero_columnas_extras, detalles=columnas_extras_str)
+                        mensajes.append({'level': 'warning', 'text': msg})
 
-                    # Detectar campos opcionales vacios (solo 'nom_lab' es obligatorio)
-                    opcionales = [
-                        'id_individuo',
-                        'id_material',
-                        'volumen_actual',
-                        'unidad_volumen',
-                        'concentracion_actual',
-                        'unidad_concentracion',
-                        'masa_actual',
-                        'unidad_masa',
-                        'fecha_extraccion',
-                        'fecha_llegada',
-                        'observaciones',
-                        'estado_inicial',
-                        'estado_actual',
-                        'estudio',
-                        'centro_procedencia',
-                        'lugar_procedencia',
-                        # Posición (tratar como opcional; si se proporcionan, se validan arriba)
-                        'congelador',
-                        'estante',
-                        'posicion_rack_estante',
-                        'rack',
-                        'posicion_caja_rack',
-                        'caja',
-                        'subposicion'
-                    ]
-                    for campo in opcionales:
-                        if datos.get(campo) is None:
-                            errores[fila]["advertencias"].append(f"campo_vacio:{campo}")
+                    # Guardar datos de confirmación en sesión para mostrar tras redirección
+                    request.session['confirmacion_pendiente'] = {
+                        'template': 'confirmacion_upload.html',
+                        'context': {
+                            'numero_errores_bloqueantes': numero_errores_bloqueantes,
+                            'numero_errores_advertencia': numero_errores_advertencia,
+                            'tiene_columnas_extras': tiene_columnas_extras,
+                            'numero_columnas_extras': numero_columnas_extras,
+                            'columnas_extras_str': columnas_extras_str
+                        },
+                        'mensajes': mensajes
+                    }
+                    request.session.save()
 
-                    # Registrar filas validas
-                    if not errores[fila]["bloqueantes"]:
-                        datos['fila'] = fila
-                        filas_validas.append(datos)
-                
-                # Guardar en la sesión las filas validas y los errores detectados
-                request.session['filas_validas']=filas_validas
-                request.session['errores'] = errores
+                    yield _progress_done(request.path + '?mostrar_confirmacion=1', 'Validación completada')
 
-                # Obtener configuración de mensajes para muestras
-                msg_config = get_upload_messages('muestras')
-                
-                # Mensaje inicial con número de registros
-                messages.info(request, f'{msg_config["titulo_inicial"]} {numero_registros} registros.')
-                
-                # Contar errores
-                numero_errores_bloqueantes = 0
-                numero_errores_advertencia = 0
-                for fila in errores:
-                    if errores[fila]['bloqueantes']:
-                        numero_errores_bloqueantes += 1
-                    if errores[fila]["advertencias"]:
-                        numero_errores_advertencia += 1
-
-                # Generar mensajes según el estado
-                if numero_errores_bloqueantes == 0 and numero_errores_advertencia == 0:
-                    messages.success(request, msg_config['sin_errores'])
-                else:
-                    if numero_errores_advertencia > 0:
-                        msg = msg_config['con_advertencias'].format(count=numero_errores_advertencia)
-                        messages.warning(request, msg)
-                    if numero_errores_bloqueantes > 0:
-                        msg = msg_config['con_bloqueantes'].format(count=numero_errores_bloqueantes)
-                        messages.error(request, msg)
-                
-                # Mostrar mensaje de columnas extras si existen
-                columnas_extras_str = request.session.get('columnas_adicionales', '')
-                tiene_columnas_extras = bool(columnas_extras_str)
-                numero_columnas_extras = len(columnas_extras_str.split(', ')) if columnas_extras_str else 0
-                if tiene_columnas_extras:
-                    msg = msg_config['columnas_extras'].format(count=numero_columnas_extras, detalles=columnas_extras_str)
-                    messages.warning(request, msg)
-
-                # Pasar contadores a la plantilla para mostrar cabeceras y descripciones como en estudios/congeladores
-                context = {
-                    'numero_errores_bloqueantes': numero_errores_bloqueantes,
-                    'numero_errores_advertencia': numero_errores_advertencia,
-                    'tiene_columnas_extras': tiene_columnas_extras,
-                    'numero_columnas_extras': numero_columnas_extras,
-                    'columnas_extras_str': columnas_extras_str
-                }
-                return render(request, 'confirmacion_upload.html', context)
+                return StreamingHttpResponse(gen_validar_muestras(), content_type='text/html')
         # Si se solicita un excel de errores, este se rellena en base a los errores detectados durante la validación 
         elif 'excel_errores' in request.POST:
                     # Leer los errores y el excel de la sesión
@@ -1069,64 +1211,64 @@ def upload_excel(request):
     return render(request, 'upload_excel.html', {'form': form}) 
 @permission_required('muestras.can_change_muestras_web')
 def cambio_posicion(request):
+    # Mostrar confirmación después de validación con progreso
+    if request.GET.get('mostrar_confirmacion') and 'confirmacion_pendiente' in request.session:
+        datos_conf = request.session.pop('confirmacion_pendiente')
+        for msg in datos_conf.get('mensajes', []):
+            getattr(messages, msg['level'])(request, msg['text'])
+        return render(request, datos_conf['template'], datos_conf.get('context', {}))
     # Vista para cambiar la posición de múltiples muestras a partir de un archivo Excel, requiere permiso para cambiar muestras
     if request.method=="POST":
         form = UploadExcel(request.POST, request.FILES)
         # Si el usuario confirma, se guardan las muestras en una nueva posición, vaciando la posicion antigua
         if 'confirmar' in request.POST:
-            messages.success(request,'Las muestras se han cambiado de posicion dentro del archivo')
             filas_validas = request.session.get('filas_validas',[])
-            with transaction.atomic():
-                for datos in filas_validas:
-                    # Obtener subposición destino
-                    try:
-                        subposicion = Subposicion.objects.select_for_update().get(id=datos["subposicion_id"])
-                    except Subposicion.DoesNotExist:
-                        messages.error(request, f"La subposición destino (id={datos.get('subposicion_id')}) no existe. Operación cancelada.")
-                        raise
+            total = len(filas_validas)
 
-                    # Obtener muestra
-                    try:
-                        muestra = Muestra.objects.get(nom_lab=datos['nom_lab'])
-                    except Muestra.DoesNotExist:
-                        messages.error(request, f"La muestra {datos.get('nom_lab')} no existe. Operación cancelada.")
-                        raise
+            def gen_confirmar_cambio():
+                yield _progress_page_start('Cambiando posiciones', total)
+                try:
+                    with transaction.atomic():
+                        for i, datos in enumerate(filas_validas):
+                            subposicion = Subposicion.objects.select_for_update().get(id=datos["subposicion_id"])
+                            muestra = Muestra.objects.get(nom_lab=datos['nom_lab'])
 
-                    # Crear localización basada en la subposición destino
-                    localizacion = Localizacion.objects.create(
-                        muestra=muestra,
-                        congelador=subposicion.caja.rack.estante.congelador.congelador,
-                        estante=subposicion.caja.rack.estante.numero,
-                        rack=subposicion.caja.rack.numero,
-                        caja=subposicion.caja.numero,
-                        subposicion=subposicion.numero,
-                    )
+                            localizacion = Localizacion.objects.create(
+                                muestra=muestra,
+                                congelador=subposicion.caja.rack.estante.congelador.congelador,
+                                estante=subposicion.caja.rack.estante.numero,
+                                rack=subposicion.caja.rack.numero,
+                                caja=subposicion.caja.numero,
+                                subposicion=subposicion.numero,
+                            )
 
-                    # Vaciar subposición antigua si existe
-                    antigua_id = datos.get('subposicion_antigua')
-                    if antigua_id:
-                        try:
-                            subposicion_antigua = Subposicion.objects.select_for_update().get(id=antigua_id)
-                            subposicion_antigua.vacia = True
-                            subposicion_antigua.muestra = None
-                            subposicion_antigua.save()
-                        except Subposicion.DoesNotExist:
-                            # Si la subposición antigua no existe, simplemente se ignora y continúa
-                            pass
+                            antigua_id = datos.get('subposicion_antigua')
+                            if antigua_id:
+                                try:
+                                    subposicion_antigua = Subposicion.objects.select_for_update().get(id=antigua_id)
+                                    subposicion_antigua.vacia = True
+                                    subposicion_antigua.muestra = None
+                                    subposicion_antigua.save()
+                                except Subposicion.DoesNotExist:
+                                    pass
 
-                    # Asignar la nueva subposición
-                    subposicion.vacia = False
-                    subposicion.muestra = muestra
-                    subposicion.save()
+                            subposicion.vacia = False
+                            subposicion.muestra = muestra
+                            subposicion.save()
 
-                    historial_localizaciones.objects.create(
-                        muestra=muestra,
-                        localizacion=localizacion,
-                        fecha_asignacion=timezone.now(),
-                        usuario_asignacion=request.user
-                    )
+                            historial_localizaciones.objects.create(
+                                muestra=muestra,
+                                localizacion=localizacion,
+                                fecha_asignacion=timezone.now(),
+                                usuario_asignacion=request.user
+                            )
+                            if _should_update(i, total):
+                                yield _progress_update(i + 1, total)
+                    yield _progress_done('/muestras/', 'Posiciones actualizadas correctamente')
+                except Exception as e:
+                    yield _progress_error(str(e))
 
-            return redirect('muestras_todas')
+            return StreamingHttpResponse(gen_confirmar_cambio(), content_type='text/html')
 
         # Si el usuario cancela, no se hace nada
         elif 'cancelar' in request.POST:
@@ -1214,11 +1356,6 @@ def cambio_posicion(request):
 
                     return str(value).strip().lower()
                 # Carga de datos previos y creación de estructuras 
-                filas_validas = []
-                errores = {}
-                nom_lab_excel = set()
-                numero_registros = 0
-
                 cache = {
                     'subposiciones': {
                         (
@@ -1238,85 +1375,109 @@ def cambio_posicion(request):
                     'muestras_existentes': set(m.lower() for m in Muestra.objects.values_list('nom_lab',flat=True))
                 }
 
-                # Recorrer el df para detectar errores y normalizar
-                for idx, row in df.iterrows():
-                    numero_registros += 1
-                    fila = idx + 2 
-                    errores[fila]={"bloqueantes":[]}
-                    datos = {
-                        "nom_lab":norm(row['nom_lab']),
-                        "congelador":(norm_code(row['congelador']) or None),
-                        "estante":norm_code(row['estante']),
-                        "posicion_rack_estante":norm_code(row['posicion_rack_estante']),
-                        "rack":(norm_code(row['rack']) or None),
-                        "posicion_caja_rack":norm_code(row['posicion_caja_rack']),
-                        "caja":(norm_code(row['caja']) or None),
-                        "subposicion":(norm_code(row['subposicion']) or None), 
-                    }
-                    # Comprobar si los campos obligatorios están rellenados
-                    obligatorios = ["nom_lab", "congelador", "estante", "posicion_rack_estante", "rack", "caja", "posicion_caja_rack","subposicion"]
+                total_filas = len(df)
 
-                    for campo in obligatorios:
-                        if not datos.get(campo):
-                            errores[fila]["bloqueantes"].append(f"campo_obligatorio_vacio:{campo}")
-                    
-                    # Comprobar si hay duplicados entre las muestras dentro del excel o si la muestra no está en la base de datos
-                    nom_lab = datos["nom_lab"].lower()
+                def gen_validar_cambio():
+                    filas_validas = []
+                    errores = {}
+                    nom_lab_excel = set()
+                    numero_registros = 0
 
-                    if nom_lab not in cache["muestras_existentes"]:
-                        errores[fila]["bloqueantes"].append("muestra_no_existe_bd")
-                    if nom_lab in nom_lab_excel:
-                        errores[fila]["bloqueantes"].append("muestra_duplicada_excel")
-                    else:
-                        nom_lab_excel.add(nom_lab)
+                    yield _progress_page_start('Validando cambio de posición', total_filas)
 
-                    # Comprobar si la localización está ocupada o existe
-                    key = (
-                        datos["congelador"],
-                        datos["estante"],
-                        datos["rack"],
-                        datos["caja"],
-                        datos["subposicion"]
-                    )
+                    # Recorrer el df para detectar errores y normalizar
+                    for idx, row in df.iterrows():
+                        numero_registros += 1
+                        fila = idx + 2 
+                        errores[fila]={"bloqueantes":[]}
+                        datos = {
+                            "nom_lab":norm(row['nom_lab']),
+                            "congelador":(norm_code(row['congelador']) or None),
+                            "estante":norm_code(row['estante']),
+                            "posicion_rack_estante":norm_code(row['posicion_rack_estante']),
+                            "rack":(norm_code(row['rack']) or None),
+                            "posicion_caja_rack":norm_code(row['posicion_caja_rack']),
+                            "caja":(norm_code(row['caja']) or None),
+                            "subposicion":(norm_code(row['subposicion']) or None), 
+                        }
+                        # Comprobar si los campos obligatorios están rellenados
+                        obligatorios = ["nom_lab", "congelador", "estante", "posicion_rack_estante", "rack", "caja", "posicion_caja_rack","subposicion"]
 
-                    subposicion = cache["subposiciones"].get(key)
+                        for campo in obligatorios:
+                            if not datos.get(campo):
+                                errores[fila]["bloqueantes"].append(f"campo_obligatorio_vacio:{campo}")
+                        
+                        # Comprobar si hay duplicados entre las muestras dentro del excel o si la muestra no está en la base de datos
+                        nom_lab = datos["nom_lab"].lower()
 
-                    if not subposicion:
-                        errores[fila]["bloqueantes"].append("localizacion_no_existe")
-                    elif not subposicion.vacia:
-                        errores[fila]["bloqueantes"].append("localizacion_ocupada")
-                    else:
-                        datos["subposicion_id"] = subposicion.id
-                        datos["subposicion_antigua"] = cache['posiciones_actuales'].get(datos['nom_lab'].lower())
-                    
-                    # Registrar filas validas
-                    if not errores[fila]["bloqueantes"]:
-                        datos['fila'] = fila
-                        filas_validas.append(datos)
-                
-                    request.session['filas_validas']=filas_validas
+                        if nom_lab not in cache["muestras_existentes"]:
+                            errores[fila]["bloqueantes"].append("muestra_no_existe_bd")
+                        if nom_lab in nom_lab_excel:
+                            errores[fila]["bloqueantes"].append("muestra_duplicada_excel")
+                        else:
+                            nom_lab_excel.add(nom_lab)
+
+                        # Comprobar si la localización está ocupada o existe
+                        key = (
+                            datos["congelador"],
+                            datos["estante"],
+                            datos["rack"],
+                            datos["caja"],
+                            datos["subposicion"]
+                        )
+
+                        subposicion = cache["subposiciones"].get(key)
+
+                        if not subposicion:
+                            errores[fila]["bloqueantes"].append("localizacion_no_existe")
+                        elif not subposicion.vacia:
+                            errores[fila]["bloqueantes"].append("localizacion_ocupada")
+                        else:
+                            datos["subposicion_id"] = subposicion.id
+                            datos["subposicion_antigua"] = cache['posiciones_actuales'].get(datos['nom_lab'].lower())
+                        
+                        # Registrar filas validas
+                        if not errores[fila]["bloqueantes"]:
+                            datos['fila'] = fila
+                            filas_validas.append(datos)
+
+                        if _should_update(idx, total_filas):
+                            yield _progress_update(idx + 1, total_filas)
+
+                    # Guardar en la sesión las filas validas y los errores detectados
+                    request.session['filas_validas'] = filas_validas
                     request.session['errores'] = errores
 
-                # Mensajes de información de la subida
-                upload_msgs = get_upload_messages('cambio_posicion')
-                messages.info(request, f"{upload_msgs['titulo_inicial']} {numero_registros} registros.")
-                numero_errores_bloqueantes = 0
-                for fila in errores:
-                    if errores[fila]['bloqueantes']:
-                        numero_errores_bloqueantes+=1
-                
-                errores_encontrados = numero_errores_bloqueantes > 0 or extra_columns
-                
-                if numero_errores_bloqueantes == 0 and not extra_columns:
-                    messages.success(request, upload_msgs['sin_errores'])
-                else:
-                    if numero_errores_bloqueantes > 0:
-                        msg_bloqueantes = upload_msgs['con_bloqueantes'].format(count=numero_errores_bloqueantes)
-                        messages.error(request, msg_bloqueantes)
-                    if extra_columns:
-                        msg_extras = upload_msgs['columnas_extras'].format(count=len(columnas_adicionales), detalles=columnas_adicionales_str)
-                        messages.warning(request, msg_extras)
-                return render(request, 'confirmacion_upload_cambio_posicion.html', {'errores_encontrados': errores_encontrados})
+                    # Mensajes de información de la subida
+                    upload_msgs = get_upload_messages('cambio_posicion')
+                    mensajes = [{'level': 'info', 'text': f"{upload_msgs['titulo_inicial']} {numero_registros} registros."}]
+                    numero_errores_bloqueantes = 0
+                    for fila in errores:
+                        if errores[fila]['bloqueantes']:
+                            numero_errores_bloqueantes += 1
+                    
+                    errores_encontrados = numero_errores_bloqueantes > 0 or extra_columns
+                    
+                    if numero_errores_bloqueantes == 0 and not extra_columns:
+                        mensajes.append({'level': 'success', 'text': upload_msgs['sin_errores']})
+                    else:
+                        if numero_errores_bloqueantes > 0:
+                            msg_bloqueantes = upload_msgs['con_bloqueantes'].format(count=numero_errores_bloqueantes)
+                            mensajes.append({'level': 'error', 'text': msg_bloqueantes})
+                        if extra_columns:
+                            msg_extras = upload_msgs['columnas_extras'].format(count=len(columnas_adicionales), detalles=columnas_adicionales_str)
+                            mensajes.append({'level': 'warning', 'text': msg_extras})
+
+                    # Guardar datos de confirmación en sesión para mostrar tras redirección
+                    request.session['confirmacion_pendiente'] = {
+                        'template': 'confirmacion_upload_cambio_posicion.html',
+                        'context': {'errores_encontrados': errores_encontrados},
+                        'mensajes': mensajes
+                    }
+                    request.session.save()
+                    yield _progress_done(request.path + '?mostrar_confirmacion=1', 'Validación completada')
+
+                return StreamingHttpResponse(gen_validar_cambio(), content_type='text/html')
             
         # Si se solicita un excel de errores, este se rellena en base a los errores detectados durante la validación 
         elif 'excel_errores' in request.POST:
@@ -1603,6 +1764,12 @@ def localizaciones(request):
     return HttpResponse(template.render(context, request))
 @permission_required('muestras.can_add_localizaciones_web')
 def upload_excel_localizaciones(request):
+    # Mostrar confirmación después de validación con progreso
+    if request.GET.get('mostrar_confirmacion') and 'confirmacion_pendiente' in request.session:
+        datos_conf = request.session.pop('confirmacion_pendiente')
+        for msg in datos_conf.get('mensajes', []):
+            getattr(messages, msg['level'])(request, msg['text'])
+        return render(request, datos_conf['template'], datos_conf.get('context', {}))
     if request.method=="POST":
         # Vista para subir localizaciones desde un archivo Excel, requiere permiso para añadir localizaciones
         form = UploadExcel(request.POST, request.FILES)
@@ -1645,36 +1812,41 @@ def upload_excel_localizaciones(request):
         # Si el usuario confirma, se guardan las localizaciones en la base de datos      
         if 'confirmar' in request.POST:
             filas = request.session.pop('filas_validas', [])
+            total = len(filas)
 
-            with transaction.atomic():
-                for fila in filas:
-                    congelador, _ = Congelador.objects.get_or_create(
-                        congelador=fila['congelador']
-                    )
+            def gen_confirmar_localizaciones():
+                yield _progress_page_start('Importando localizaciones', total)
+                try:
+                    with transaction.atomic():
+                        for i, fila in enumerate(filas):
+                            congelador, _ = Congelador.objects.get_or_create(
+                                congelador=fila['congelador']
+                            )
+                            estante, _ = Estante.objects.get_or_create(
+                                congelador=congelador,
+                                numero=fila['estante']
+                            )
+                            rack, _ = Rack.objects.get_or_create(
+                                estante=estante,
+                                numero=fila['rack'],
+                                defaults={'posicion_rack_estante': fila['posicion_rack_estante']}
+                            )
+                            caja, _ = Caja.objects.get_or_create(
+                                rack=rack,
+                                numero=fila['caja'],
+                                defaults={'posicion_caja_rack': fila['posicion_caja_rack']}
+                            )
+                            Subposicion.objects.get_or_create(
+                                caja=caja,
+                                numero=fila['subposicion']
+                            )
+                            if _should_update(i, total):
+                                yield _progress_update(i + 1, total)
+                    yield _progress_done('/archivo/', 'Localizaciones importadas correctamente')
+                except Exception as e:
+                    yield _progress_error(str(e))
 
-                    estante, _ = Estante.objects.get_or_create(
-                        congelador=congelador,
-                        numero=fila['estante']
-                    )
-
-                    rack, _ = Rack.objects.get_or_create(
-                        estante=estante,
-                        numero=fila['rack'], 
-                        defaults = {'posicion_rack_estante':fila['posicion_rack_estante']}
-                    )
-
-                    caja, _ = Caja.objects.get_or_create(
-                        rack=rack,
-                        numero=fila['caja'],
-                        defaults = {'posicion_caja_rack':fila['posicion_caja_rack']}
-                    )
-
-                    Subposicion.objects.get_or_create(
-                        caja=caja,
-                        numero=fila['subposicion']
-                    )
-            messages.success(request, 'Las localizaciones se han añadido correctamente.')
-            return redirect('localizaciones_todas')
+            return StreamingHttpResponse(gen_confirmar_localizaciones(), content_type='text/html')
         # Si el usuario cancela, no se hace nada
         elif 'cancelar' in request.POST:
             messages.error(request, 'Las localizaciones del excel no se han añadido.')
@@ -1727,132 +1899,37 @@ def upload_excel_localizaciones(request):
                 df.rename(columns=rename_columns, inplace=True)
                 
                 # Procesar y validar filas
-                errores = {}
-                filas_validas = []
-                numero_registros = len(df)
-                # Mapas para comprobar consistencias:
-                # - que una misma posición de caja no tenga cajas diferentes
-                # - que una misma posición de rack no tenga racks diferentes
-                pos_to_caja = {}
-                pos_rack_to_rack = {}
-                # detectar si la misma subposición se usa más de una vez dentro del Excel
-                subposiciones_usadas = set()
-                
-                for idx, row in df.iterrows():
-                    fila_numero = idx + 2
-                    errores[fila_numero] = {"bloqueantes": []}
-                    
-                    # Limpiar y normalizar los valores
-                    congelador = normalizar_texto(row['congelador'])
-                    estante = limpiar_numero(row['estante'])
-                    posicion_rack_estante = normalizar_texto(row['posicion_rack_estante'])
-                    rack = normalizar_texto(row['rack'])
-                    posicion_caja_rack = normalizar_texto(row['posicion_caja_rack'])
-                    caja = normalizar_texto(row['caja'])
-                    subpos = normalizar_texto(row['subposicion'])
-                    
-                    # Comprobar si hay campos vacíos
-                    campos = {
-                        'congelador': congelador,
-                        'estante': estante,
-                        'posicion_rack_estante': posicion_rack_estante,
-                        'rack': rack,
-                        'posicion_caja_rack': posicion_caja_rack,
-                        'caja': caja,
-                        'subposicion': subpos
-                    }
-                    
-                    for nombre_campo, valor in campos.items():
-                        if valor is None:
-                            errores[fila_numero]["bloqueantes"].append(f"campo_obligatorio_vacio:{nombre_campo}")
-                        # Validar que no haya punto y coma en ningún campo
-                        for nombre_campo, valor in campos.items():
-                            if valor and isinstance(valor, str) and ';' in valor:
-                                errores[fila_numero]["bloqueantes"].append(f"caracter_invalido_semicolon:{nombre_campo}")
-                    
-                    # Validar que ciertos campos numéricos sean enteros positivos (>0)
-                    if not errores[fila_numero]["bloqueantes"]:
-                        try:
-                            if estante is not None:
-                                if int(estante) <= 0:
-                                    raise ValueError()
-                        except Exception:
-                            errores[fila_numero]["bloqueantes"].append("formato_incorrecto:estante")
+                total_filas = len(df)
 
-                        try:
-                            if posicion_rack_estante is not None:
-                                if int(posicion_rack_estante) <= 0:
-                                    raise ValueError()
-                        except Exception:
-                            errores[fila_numero]["bloqueantes"].append("formato_incorrecto:posicion_rack_estante")
+                def gen_validar_localizaciones():
+                    errores = {}
+                    filas_validas = []
+                    numero_registros = len(df)
+                    # Mapas para comprobar consistencias:
+                    # - que una misma posición de caja no tenga cajas diferentes
+                    # - que una misma posición de rack no tenga racks diferentes
+                    pos_to_caja = {}
+                    pos_rack_to_rack = {}
+                    # detectar si la misma subposición se usa más de una vez dentro del Excel
+                    subposiciones_usadas = set()
 
-                        try:
-                            if posicion_caja_rack is not None:
-                                if int(posicion_caja_rack) <= 0:
-                                    raise ValueError()
-                        except Exception:
-                            errores[fila_numero]["bloqueantes"].append("formato_incorrecto:posicion_caja_rack")
+                    yield _progress_page_start('Validando localizaciones', total_filas)
 
-                    # Si hay errores bloqueantes hasta ahora, saltar validaciones posteriores
-                    if errores[fila_numero]["bloqueantes"]:
-                        continue
-
-                    # Comprobar consistencia de rack: misma (congelador, estante, posicion_rack_estante)
-                    # no puede mapear a racks distintos
-                    pos_rack_key = (congelador, estante, posicion_rack_estante)
-                    if pos_rack_key in pos_rack_to_rack:
-                        if pos_rack_to_rack[pos_rack_key] != rack:
-                            errores[fila_numero]["bloqueantes"].append("rack_inconsistente")
-                            continue
-                    else:
-                        pos_rack_to_rack[pos_rack_key] = rack
-
-                    # Comprobar consistencia: una misma posición de caja no puede tener cajas distintas
-                    pos_key = (congelador, estante, posicion_rack_estante, rack, posicion_caja_rack)
-                    if pos_key in pos_to_caja:
-                        if pos_to_caja[pos_key] != caja:
-                            errores[fila_numero]["bloqueantes"].append("caja_inconsistente")
-                            continue
-                    else:
-                        pos_to_caja[pos_key] = caja
-
-                    # Comprobar duplicado dentro del Excel: misma subposición completa ya usada
-                    subpos_key = (congelador, estante, posicion_rack_estante, rack, posicion_caja_rack, subpos)
-                    if subpos_key in subposiciones_usadas:
-                        errores[fila_numero]["bloqueantes"].append("subposicion_duplicada_excel")
-                        continue
-                    else:
-                        subposiciones_usadas.add(subpos_key)
-                    
-                    # Comprobar si la posición del rack ya está ocupada por otro rack
-                    if Rack.objects.filter(
-                        estante__congelador__congelador__iexact=congelador,
-                        estante__numero__iexact=estante,
-                        posicion_rack_estante__iexact=posicion_rack_estante
-                    ).exclude(numero__iexact=rack).exists():
-                        errores[fila_numero]["bloqueantes"].append("posicion_rack_ocupada")
-                        continue
-                    
-                    # Comprobar si la posición de la caja ya está ocupada por otra caja
-                    if Caja.objects.filter(
-                        rack__estante__congelador__congelador__iexact=congelador,
-                        rack__estante__numero__iexact=estante,
-                        rack__numero__iexact=rack,
-                        posicion_caja_rack__iexact=posicion_caja_rack
-                    ).exclude(numero__iexact=caja).exists():
-                        errores[fila_numero]["bloqueantes"].append("posicion_caja_ocupada")
-                        continue
-                    
-                    # Comprobar si la localización ya existe (case-insensitive para textos)
-                    if Subposicion.objects.filter(numero__iexact=subpos,
-                                                  caja__numero__iexact=caja,
-                                                  caja__rack__numero__iexact=rack,
-                                                  caja__rack__estante__numero=estante,
-                                                  caja__rack__estante__congelador__congelador__iexact=congelador).exists():
-                        errores[fila_numero]["bloqueantes"].append("localizacion_duplicada")
-                    else:
-                        # Guardar fila válida
-                        filas_validas.append({
+                    for idx, row in df.iterrows():
+                        fila_numero = idx + 2
+                        errores[fila_numero] = {"bloqueantes": []}
+                        
+                        # Limpiar y normalizar los valores
+                        congelador = normalizar_texto(row['congelador'])
+                        estante = limpiar_numero(row['estante'])
+                        posicion_rack_estante = normalizar_texto(row['posicion_rack_estante'])
+                        rack = normalizar_texto(row['rack'])
+                        posicion_caja_rack = normalizar_texto(row['posicion_caja_rack'])
+                        caja = normalizar_texto(row['caja'])
+                        subpos = normalizar_texto(row['subposicion'])
+                        
+                        # Comprobar si hay campos vacíos
+                        campos = {
                             'congelador': congelador,
                             'estante': estante,
                             'posicion_rack_estante': posicion_rack_estante,
@@ -1860,38 +1937,161 @@ def upload_excel_localizaciones(request):
                             'posicion_caja_rack': posicion_caja_rack,
                             'caja': caja,
                             'subposicion': subpos
-                        })
-                
-                # Guardar en sesión los resultados de la validación
-                request.session['filas_validas'] = filas_validas
-                request.session['errores'] = errores
+                        }
+                        
+                        for nombre_campo, valor in campos.items():
+                            if valor is None:
+                                errores[fila_numero]["bloqueantes"].append(f"campo_obligatorio_vacio:{nombre_campo}")
+                            # Validar que no haya punto y coma en ningún campo
+                            for nombre_campo, valor in campos.items():
+                                if valor and isinstance(valor, str) and ';' in valor:
+                                    errores[fila_numero]["bloqueantes"].append(f"caracter_invalido_semicolon:{nombre_campo}")
+                        
+                        # Validar que ciertos campos numéricos sean enteros positivos (>0)
+                        if not errores[fila_numero]["bloqueantes"]:
+                            try:
+                                if estante is not None:
+                                    if int(estante) <= 0:
+                                        raise ValueError()
+                            except Exception:
+                                errores[fila_numero]["bloqueantes"].append("formato_incorrecto:estante")
 
-                # Obtener configuración de mensajes para localizaciones
-                msg_config = get_upload_messages('localizaciones')
-                
-                # Mensaje inicial
-                messages.info(request, f'{msg_config["titulo_inicial"]} {numero_registros} registros')
-                
-                # Contar errores
-                numero_errores_bloqueantes = sum(1 for fila in errores if errores[fila]['bloqueantes'])
-                
-                # Determinar si hay errores para mostrar la sección de Excel de errores
-                errores_encontrados = (numero_errores_bloqueantes > 0) or extra_columns
+                            try:
+                                if posicion_rack_estante is not None:
+                                    if int(posicion_rack_estante) <= 0:
+                                        raise ValueError()
+                            except Exception:
+                                errores[fila_numero]["bloqueantes"].append("formato_incorrecto:posicion_rack_estante")
 
-                # Generar mensajes según el estado
-                if numero_errores_bloqueantes > 0:
-                    msg = msg_config['con_bloqueantes'].format(count=numero_errores_bloqueantes)
-                    messages.error(request, msg)
-                
-                if extra_columns:
-                    num_extras = len([c.strip() for c in columnas_adicionales_str.split(',') if c.strip()])
-                    msg = msg_config['columnas_extras'].format(count=num_extras, detalles=columnas_adicionales_str)
-                    messages.warning(request, msg)
-                
-                if numero_errores_bloqueantes == 0 and not extra_columns:
-                    messages.success(request, msg_config['sin_errores'])
+                            try:
+                                if posicion_caja_rack is not None:
+                                    if int(posicion_caja_rack) <= 0:
+                                        raise ValueError()
+                            except Exception:
+                                errores[fila_numero]["bloqueantes"].append("formato_incorrecto:posicion_caja_rack")
 
-                return render(request, 'confirmacion_upload_localizacion.html', {'errores_encontrados': errores_encontrados})
+                        # Si hay errores bloqueantes hasta ahora, saltar validaciones posteriores
+                        if errores[fila_numero]["bloqueantes"]:
+                            if _should_update(idx, total_filas):
+                                yield _progress_update(idx + 1, total_filas)
+                            continue
+
+                        # Comprobar consistencia de rack: misma (congelador, estante, posicion_rack_estante)
+                        # no puede mapear a racks distintos
+                        pos_rack_key = (congelador, estante, posicion_rack_estante)
+                        if pos_rack_key in pos_rack_to_rack:
+                            if pos_rack_to_rack[pos_rack_key] != rack:
+                                errores[fila_numero]["bloqueantes"].append("rack_inconsistente")
+                                if _should_update(idx, total_filas):
+                                    yield _progress_update(idx + 1, total_filas)
+                                continue
+                        else:
+                            pos_rack_to_rack[pos_rack_key] = rack
+
+                        # Comprobar consistencia: una misma posición de caja no puede tener cajas distintas
+                        pos_key = (congelador, estante, posicion_rack_estante, rack, posicion_caja_rack)
+                        if pos_key in pos_to_caja:
+                            if pos_to_caja[pos_key] != caja:
+                                errores[fila_numero]["bloqueantes"].append("caja_inconsistente")
+                                if _should_update(idx, total_filas):
+                                    yield _progress_update(idx + 1, total_filas)
+                                continue
+                        else:
+                            pos_to_caja[pos_key] = caja
+
+                        # Comprobar duplicado dentro del Excel: misma subposición completa ya usada
+                        subpos_key = (congelador, estante, posicion_rack_estante, rack, posicion_caja_rack, subpos)
+                        if subpos_key in subposiciones_usadas:
+                            errores[fila_numero]["bloqueantes"].append("subposicion_duplicada_excel")
+                            if _should_update(idx, total_filas):
+                                yield _progress_update(idx + 1, total_filas)
+                            continue
+                        else:
+                            subposiciones_usadas.add(subpos_key)
+                        
+                        # Comprobar si la posición del rack ya está ocupada por otro rack
+                        if Rack.objects.filter(
+                            estante__congelador__congelador__iexact=congelador,
+                            estante__numero__iexact=estante,
+                            posicion_rack_estante__iexact=posicion_rack_estante
+                        ).exclude(numero__iexact=rack).exists():
+                            errores[fila_numero]["bloqueantes"].append("posicion_rack_ocupada")
+                            if _should_update(idx, total_filas):
+                                yield _progress_update(idx + 1, total_filas)
+                            continue
+                        
+                        # Comprobar si la posición de la caja ya está ocupada por otra caja
+                        if Caja.objects.filter(
+                            rack__estante__congelador__congelador__iexact=congelador,
+                            rack__estante__numero__iexact=estante,
+                            rack__numero__iexact=rack,
+                            posicion_caja_rack__iexact=posicion_caja_rack
+                        ).exclude(numero__iexact=caja).exists():
+                            errores[fila_numero]["bloqueantes"].append("posicion_caja_ocupada")
+                            if _should_update(idx, total_filas):
+                                yield _progress_update(idx + 1, total_filas)
+                            continue
+                        
+                        # Comprobar si la localización ya existe (case-insensitive para textos)
+                        if Subposicion.objects.filter(numero__iexact=subpos,
+                                                      caja__numero__iexact=caja,
+                                                      caja__rack__numero__iexact=rack,
+                                                      caja__rack__estante__numero=estante,
+                                                      caja__rack__estante__congelador__congelador__iexact=congelador).exists():
+                            errores[fila_numero]["bloqueantes"].append("localizacion_duplicada")
+                        else:
+                            # Guardar fila válida
+                            filas_validas.append({
+                                'congelador': congelador,
+                                'estante': estante,
+                                'posicion_rack_estante': posicion_rack_estante,
+                                'rack': rack,
+                                'posicion_caja_rack': posicion_caja_rack,
+                                'caja': caja,
+                                'subposicion': subpos
+                            })
+
+                        if _should_update(idx, total_filas):
+                            yield _progress_update(idx + 1, total_filas)
+
+                    # Guardar en sesión los resultados de la validación
+                    request.session['filas_validas'] = filas_validas
+                    request.session['errores'] = errores
+
+                    # Obtener configuración de mensajes para localizaciones
+                    msg_config = get_upload_messages('localizaciones')
+
+                    # Build messages
+                    mensajes = [{'level': 'info', 'text': f'{msg_config["titulo_inicial"]} {numero_registros} registros'}]
+
+                    # Contar errores
+                    numero_errores_bloqueantes = sum(1 for fila in errores if errores[fila]['bloqueantes'])
+
+                    # Determinar si hay errores para mostrar la sección de Excel de errores
+                    errores_encontrados = (numero_errores_bloqueantes > 0) or extra_columns
+
+                    # Generar mensajes según el estado
+                    if numero_errores_bloqueantes > 0:
+                        msg = msg_config['con_bloqueantes'].format(count=numero_errores_bloqueantes)
+                        mensajes.append({'level': 'error', 'text': msg})
+
+                    if extra_columns:
+                        num_extras = len([c.strip() for c in columnas_adicionales_str.split(',') if c.strip()])
+                        msg = msg_config['columnas_extras'].format(count=num_extras, detalles=columnas_adicionales_str)
+                        mensajes.append({'level': 'warning', 'text': msg})
+
+                    if numero_errores_bloqueantes == 0 and not extra_columns:
+                        mensajes.append({'level': 'success', 'text': msg_config['sin_errores']})
+
+                    request.session['confirmacion_pendiente'] = {
+                        'template': 'confirmacion_upload_localizacion.html',
+                        'context': {'errores_encontrados': errores_encontrados},
+                        'mensajes': mensajes
+                    }
+                    request.session.save()
+                    yield _progress_done(request.path + '?mostrar_confirmacion=1', 'Validación completada')
+
+                return StreamingHttpResponse(gen_validar_localizaciones(), content_type='text/html')
             
         # Si se solicita un excel de errores, este se rellena en base a los errores detectados durante la validación
         elif 'excel_errores' in request.POST:
@@ -2221,32 +2421,42 @@ def nuevo_estudio(request):
     return HttpResponse(template.render({'form':form},request))
 @permission_required('muestras.can_add_estudios_web')
 def excel_estudios(request):
+    # Mostrar confirmación después de validación con progreso
+    if request.GET.get('mostrar_confirmacion') and 'confirmacion_pendiente' in request.session:
+        datos_conf = request.session.pop('confirmacion_pendiente')
+        for msg in datos_conf.get('mensajes', []):
+            getattr(messages, msg['level'])(request, msg['text'])
+        return render(request, datos_conf['template'], datos_conf.get('context', {}))
     # Vista para subir estudios desde un archivo Excel, requiere permiso para añadir estudios
     if request.method=="POST":
         form = UploadExcel(request.POST, request.FILES)
         # Si el usuario confirma, se guardan los estudios en la base de datos
         if 'confirmar' in request.POST:
-            messages.success(request, 'Las estudios se han añadido correctamente')
             filas_validas = request.session.get('filas_validas',[])
-            with transaction.atomic():
-                for datos in filas_validas:
-                    if datos["fecha_inicio_estudio"]:
-                        fecha_inicio_estudio =  date.fromisoformat(datos["fecha_inicio_estudio"])
-                    else:
-                        fecha_inicio_estudio = None
-                    if datos["fecha_fin_estudio"]:
-                        fecha_fin_estudio = date.fromisoformat(datos["fecha_fin_estudio"])
-                    else:
-                        fecha_fin_estudio = None
-                    Estudio.objects.create(
-                        referencia_estudio = datos['referencia_estudio'],
-                        nombre_estudio = datos['nombre_estudio'],
-                        descripcion_estudio = datos['descripcion_estudio'],
-                        fecha_inicio_estudio = fecha_inicio_estudio,
-                        fecha_fin_estudio = fecha_fin_estudio,
-                        investigador_principal = datos['investigador_principal']
-                    )
-            return redirect('estudios_todos')
+            total = len(filas_validas)
+
+            def gen_confirmar_estudios():
+                yield _progress_page_start('Importando estudios', total)
+                try:
+                    with transaction.atomic():
+                        for i, datos in enumerate(filas_validas):
+                            fecha_inicio_estudio = date.fromisoformat(datos["fecha_inicio_estudio"]) if datos["fecha_inicio_estudio"] else None
+                            fecha_fin_estudio = date.fromisoformat(datos["fecha_fin_estudio"]) if datos["fecha_fin_estudio"] else None
+                            Estudio.objects.create(
+                                referencia_estudio=datos['referencia_estudio'],
+                                nombre_estudio=datos['nombre_estudio'],
+                                descripcion_estudio=datos['descripcion_estudio'],
+                                fecha_inicio_estudio=fecha_inicio_estudio,
+                                fecha_fin_estudio=fecha_fin_estudio,
+                                investigador_principal=datos['investigador_principal']
+                            )
+                            if _should_update(i, total):
+                                yield _progress_update(i + 1, total)
+                    yield _progress_done('/estudios/', 'Estudios importados correctamente')
+                except Exception as e:
+                    yield _progress_error(str(e))
+
+            return StreamingHttpResponse(gen_confirmar_estudios(), content_type='text/html')
         # Si el usuario cancela, no se hace nada
         elif 'cancelar' in request.POST:
             messages.error(request,'Los estudios no se han añadido')
@@ -2311,156 +2521,175 @@ def excel_estudios(request):
                         return fecha.date()
                 '''
                 # Crear estructuras previas del excel
-                filas_validas = []
-                errores = {}
-                nombre_estudios_excel = set()
-                numero_registros = 0
-                cache = {
-                    'estudios_existentes_lower': set(n.lower() for n in Estudio.objects.values_list('nombre_estudio', flat=True).distinct() if n),
-                    'referencias_existentes_lower': set(str(x).strip().lower() for x in Estudio.objects.values_list('referencia_estudio', flat=True).distinct() if x is not None)
-                }
-                referencias_excel = set()
-                
-                for idx, row in df.iterrows():
-                    # Recorrer el df para detectar errores y normalizar
-                    numero_registros += 1
-                    fila = idx + 2 
-                    errores[fila]={"advertencias":[], "bloqueantes":[]}
-                    datos = {
-                        "nombre_estudio":norm(row['nombre_estudio']),
-                        'referencia_estudio': norm(row['referencia_estudio']),
-                        'descripcion_estudio': norm(row['descripcion_estudio']),
-                        'fecha_inicio_estudio':norm(row['fecha_inicio_estudio']),
-                        'fecha_fin_estudio': norm(row['fecha_fin_estudio']),
-                        'investigador_principal': norm(row['investigador_principal'])
+                total_filas = len(df)
+
+                def gen_validar_estudios():
+                    filas_validas = []
+                    errores = {}
+                    nombre_estudios_excel = set()
+                    numero_registros = 0
+                    cache_inner = {
+                        'estudios_existentes_lower': set(n.lower() for n in Estudio.objects.values_list('nombre_estudio', flat=True).distinct() if n),
+                        'referencias_existentes_lower': set(str(x).strip().lower() for x in Estudio.objects.values_list('referencia_estudio', flat=True).distinct() if x is not None)
                     }
-                    # Detectar campos vacios
-                    optativos = ["referencia_estudio", "descripcion_estudio", "fecha_inicio_estudio", "fecha_fin_estudio", "investigador_principal"]
-                    for campo in optativos:
-                        if not datos.get(campo):
-                            errores[fila]["advertencias"].append(f"campo_optativo_vacio:{campo}")
-                    obligatorios = ["nombre_estudio"]
-                    for campo in obligatorios:
-                        if not datos.get(campo):
-                            errores[fila]["bloqueantes"].append(f"campo_obligatorio_vacio:{campo}")
-                    
-                    # Validar que ningún campo contenga el carácter punto y coma (;)
-                    campos_a_validar = ['referencia_estudio', 'nombre_estudio', 'descripcion_estudio', 'investigador_principal']
-                    for campo in campos_a_validar:
-                        valor = datos.get(campo)
-                        if valor and isinstance(valor, str) and ';' in valor:
-                            errores[fila]["bloqueantes"].append(f"caracter_invalido_semicolon:{campo}")
-                    
-                    # Detectar formato de fecha incorrecto (advertencia)
-                    for campo in ['fecha_inicio_estudio', 'fecha_fin_estudio']:
-                        if datos[campo] != None:
-                            try:
-                                # Si es un Timestamp de pandas o datetime, usar directamente
-                                if isinstance(datos[campo], (pd.Timestamp, type(pd.NaT))):
-                                    if pd.isna(datos[campo]):
-                                        datos[campo] = None
-                                    else:
-                                        # Convertir Timestamp/datetime a ISO string
-                                        datos[campo] = datos[campo].date().isoformat()
-                                elif isinstance(datos[campo], date):
-                                    # Si es un objeto date, convertir directamente a ISO
-                                    datos[campo] = datos[campo].isoformat()
-                                else:
-                                    # Si es string, parsear con formato DD-MM-AAAA
-                                    fecha_str = str(datos[campo]).strip()
-                                    partes = fecha_str.split('-')
-                                    if len(partes) == 3 and all(p.isdigit() for p in partes):
-                                        fecha = pd.to_datetime(fecha_str, format='%d-%m-%Y')
-                                        datos[campo] = fecha.date().isoformat()
-                                    else:
-                                        errores[fila]["bloqueantes"].append(f"fecha_invalida:{campo}")
-                                        datos[campo] = None
-                            except Exception:
-                                errores[fila]["bloqueantes"].append(f"fecha_invalida:{campo}")
-                                datos[campo] = None
+                    referencias_excel = set()
 
-                    # Validar que fecha_fin >= fecha_inicio si ambas están informadas
-                    fecha_inicio = datos.get('fecha_inicio_estudio')
-                    fecha_fin = datos.get('fecha_fin_estudio')
-                    if fecha_inicio and fecha_fin:
-                        # Ambas fechas están informadas y son válidas
-                        if fecha_fin < fecha_inicio:
-                            errores[fila]["bloqueantes"].append("fecha_fin_menor_que_inicio")
+                    yield _progress_page_start('Validando estudios', total_filas)
 
-                    # Detectar si el estudio ya existe
-                    nombre_estudio = datos['nombre_estudio']
-                    if nombre_estudio:
-                        # Normalizar a string en caso de que sea numérico
-                        nombre_estudio_str = str(nombre_estudio).strip()
-                        nombre_estudio_lower = nombre_estudio_str.lower()
-                        if nombre_estudio_lower in cache['estudios_existentes_lower']:
-                            errores[fila]["bloqueantes"].append(f"estudio_existente")
-                        if nombre_estudio_lower in nombre_estudios_excel:
-                            errores[fila]["bloqueantes"].append("estudio_duplicado_excel")
-                        else:
-                            nombre_estudios_excel.add(nombre_estudio_lower)
-                    else:
-                        nombre_estudio_lower = ''
-                    # Validar referencia_estudio: si existe, no puede coincidir con otras en DB ni duplicarse en el Excel
-                    referencia = datos.get('referencia_estudio')
-                    if referencia:
-                        # Normalizar a string antes de usar lower() para admitir valores numéricos en Excel
-                        ref_str = str(referencia).strip()
-                        if ref_str:
-                            ref_lower = ref_str.lower()
-                            if ref_lower in cache['referencias_existentes_lower']:
-                                errores[fila]["bloqueantes"].append("referencia_existente")
-                            if ref_lower in referencias_excel:
-                                errores[fila]["bloqueantes"].append("referencia_duplicada_excel")
+                    for idx, row in df.iterrows():
+                        # Recorrer el df para detectar errores y normalizar
+                        numero_registros += 1
+                        fila = idx + 2 
+                        errores[fila]={"advertencias":[], "bloqueantes":[]}
+                        datos = {
+                            "nombre_estudio":norm(row['nombre_estudio']),
+                            'referencia_estudio': norm(row['referencia_estudio']),
+                            'descripcion_estudio': norm(row['descripcion_estudio']),
+                            'fecha_inicio_estudio':norm(row['fecha_inicio_estudio']),
+                            'fecha_fin_estudio': norm(row['fecha_fin_estudio']),
+                            'investigador_principal': norm(row['investigador_principal'])
+                        }
+                        # Detectar campos vacios
+                        optativos = ["referencia_estudio", "descripcion_estudio", "fecha_inicio_estudio", "fecha_fin_estudio", "investigador_principal"]
+                        for campo in optativos:
+                            if not datos.get(campo):
+                                errores[fila]["advertencias"].append(f"campo_optativo_vacio:{campo}")
+                        obligatorios = ["nombre_estudio"]
+                        for campo in obligatorios:
+                            if not datos.get(campo):
+                                errores[fila]["bloqueantes"].append(f"campo_obligatorio_vacio:{campo}")
+                        
+                        # Validar que ningún campo contenga el carácter punto y coma (;)
+                        campos_a_validar = ['referencia_estudio', 'nombre_estudio', 'descripcion_estudio', 'investigador_principal']
+                        for campo in campos_a_validar:
+                            valor = datos.get(campo)
+                            if valor and isinstance(valor, str) and ';' in valor:
+                                errores[fila]["bloqueantes"].append(f"caracter_invalido_semicolon:{campo}")
+                        
+                        # Detectar formato de fecha incorrecto (advertencia)
+                        for campo in ['fecha_inicio_estudio', 'fecha_fin_estudio']:
+                            if datos[campo] != None:
+                                try:
+                                    # Si es un Timestamp de pandas o datetime, usar directamente
+                                    if isinstance(datos[campo], (pd.Timestamp, type(pd.NaT))):
+                                        if pd.isna(datos[campo]):
+                                            datos[campo] = None
+                                        else:
+                                            # Convertir Timestamp/datetime a ISO string
+                                            datos[campo] = datos[campo].date().isoformat()
+                                    elif isinstance(datos[campo], date):
+                                        # Si es un objeto date, convertir directamente a ISO
+                                        datos[campo] = datos[campo].isoformat()
+                                    else:
+                                        # Si es string, parsear con formato DD-MM-AAAA
+                                        fecha_str = str(datos[campo]).strip()
+                                        partes = fecha_str.split('-')
+                                        if len(partes) == 3 and all(p.isdigit() for p in partes):
+                                            fecha = pd.to_datetime(fecha_str, format='%d-%m-%Y')
+                                            datos[campo] = fecha.date().isoformat()
+                                        else:
+                                            errores[fila]["bloqueantes"].append(f"fecha_invalida:{campo}")
+                                            datos[campo] = None
+                                except Exception:
+                                    errores[fila]["bloqueantes"].append(f"fecha_invalida:{campo}")
+                                    datos[campo] = None
+
+                        # Validar que fecha_fin >= fecha_inicio si ambas están informadas
+                        fecha_inicio = datos.get('fecha_inicio_estudio')
+                        fecha_fin = datos.get('fecha_fin_estudio')
+                        if fecha_inicio and fecha_fin:
+                            # Ambas fechas están informadas y son válidas
+                            if fecha_fin < fecha_inicio:
+                                errores[fila]["bloqueantes"].append("fecha_fin_menor_que_inicio")
+
+                        # Detectar si el estudio ya existe
+                        nombre_estudio = datos['nombre_estudio']
+                        if nombre_estudio:
+                            # Normalizar a string en caso de que sea numérico
+                            nombre_estudio_str = str(nombre_estudio).strip()
+                            nombre_estudio_lower = nombre_estudio_str.lower()
+                            if nombre_estudio_lower in cache_inner['estudios_existentes_lower']:
+                                errores[fila]["bloqueantes"].append(f"estudio_existente")
+                            if nombre_estudio_lower in nombre_estudios_excel:
+                                errores[fila]["bloqueantes"].append("estudio_duplicado_excel")
                             else:
-                                referencias_excel.add(ref_lower)
-                   
-                   # Registrar filas validas
-                    if not errores[fila]["bloqueantes"]:
-                        filas_validas.append(datos)
-                
-                request.session['filas_validas']=filas_validas
-                request.session['errores'] = errores
+                                nombre_estudios_excel.add(nombre_estudio_lower)
+                        else:
+                            nombre_estudio_lower = ''
+                        # Validar referencia_estudio: si existe, no puede coincidir con otras en DB ni duplicarse en el Excel
+                        referencia = datos.get('referencia_estudio')
+                        if referencia:
+                            # Normalizar a string antes de usar lower() para admitir valores numéricos en Excel
+                            ref_str = str(referencia).strip()
+                            if ref_str:
+                                ref_lower = ref_str.lower()
+                                if ref_lower in cache_inner['referencias_existentes_lower']:
+                                    errores[fila]["bloqueantes"].append("referencia_existente")
+                                if ref_lower in referencias_excel:
+                                    errores[fila]["bloqueantes"].append("referencia_duplicada_excel")
+                                else:
+                                    referencias_excel.add(ref_lower)
+                       
+                        # Registrar filas validas
+                        if not errores[fila]["bloqueantes"]:
+                            filas_validas.append(datos)
 
-                # Obtener configuración de mensajes para estudios
-                msg_config = get_upload_messages('estudios')
-                
-                # Contar errores
-                numero_errores_bloqueantes = 0
-                numero_errores_advertencia = 0
-                for fila in errores:
-                    if errores[fila]['bloqueantes']:
-                        numero_errores_bloqueantes+=1
-                    if errores[fila]["advertencias"]:
-                        numero_errores_advertencia+=1
-                
-                # Mensaje inicial
-                messages.info(request, f'{msg_config["titulo_inicial"]} {numero_registros} registros.')
-                
-                # Generar mensajes según el estado
-                if numero_errores_advertencia > 0:
-                    msg = msg_config['con_advertencias'].format(count=numero_errores_advertencia)
-                    messages.warning(request, msg)
-                if numero_errores_bloqueantes > 0:
-                    msg = msg_config['con_bloqueantes'].format(count=numero_errores_bloqueantes)
-                    messages.error(request, msg)
-                if numero_errores_bloqueantes == 0 and numero_errores_advertencia == 0:
-                    messages.success(request, msg_config['sin_errores'])
-                
-                # Manejar columnas extras
-                columnas_extras_str = request.session.pop('columnas_adicionales', '')
-                tiene_columnas_extras = bool(columnas_extras_str)
-                numero_columnas_extras = len(columnas_extras_str.split(', ')) if columnas_extras_str else 0
-                if tiene_columnas_extras:
-                    msg = msg_config['columnas_extras'].format(count=numero_columnas_extras, detalles=columnas_extras_str)
-                    messages.warning(request, msg)
-                return render(request, 'confirmacion_upload_estudios.html', {
-                    'numero_errores_bloqueantes': numero_errores_bloqueantes, 
-                    'numero_errores_advertencia': numero_errores_advertencia,
-                    'tiene_columnas_extras': tiene_columnas_extras,
-                    'numero_columnas_extras': numero_columnas_extras,
-                    'columnas_extras_str': columnas_extras_str
-                })
+                        if _should_update(idx, total_filas):
+                            yield _progress_update(idx + 1, total_filas)
+
+                    request.session['filas_validas'] = filas_validas
+                    request.session['errores'] = errores
+
+                    # Obtener configuración de mensajes para estudios
+                    msg_config = get_upload_messages('estudios')
+
+                    # Contar errores
+                    numero_errores_bloqueantes = 0
+                    numero_errores_advertencia = 0
+                    for fila in errores:
+                        if errores[fila]['bloqueantes']:
+                            numero_errores_bloqueantes += 1
+                        if errores[fila]["advertencias"]:
+                            numero_errores_advertencia += 1
+
+                    mensajes = []
+
+                    # Mensaje inicial
+                    mensajes.append({'level': 'info', 'text': f'{msg_config["titulo_inicial"]} {numero_registros} registros.'})
+
+                    # Generar mensajes según el estado
+                    if numero_errores_advertencia > 0:
+                        msg = msg_config['con_advertencias'].format(count=numero_errores_advertencia)
+                        mensajes.append({'level': 'warning', 'text': msg})
+                    if numero_errores_bloqueantes > 0:
+                        msg = msg_config['con_bloqueantes'].format(count=numero_errores_bloqueantes)
+                        mensajes.append({'level': 'error', 'text': msg})
+                    if numero_errores_bloqueantes == 0 and numero_errores_advertencia == 0:
+                        mensajes.append({'level': 'success', 'text': msg_config['sin_errores']})
+
+                    # Manejar columnas extras
+                    columnas_extras_str = request.session.get('columnas_adicionales', '')
+                    tiene_columnas_extras = bool(columnas_extras_str)
+                    numero_columnas_extras = len(columnas_extras_str.split(', ')) if columnas_extras_str else 0
+                    if tiene_columnas_extras:
+                        msg = msg_config['columnas_extras'].format(count=numero_columnas_extras, detalles=columnas_extras_str)
+                        mensajes.append({'level': 'warning', 'text': msg})
+
+                    request.session['confirmacion_pendiente'] = {
+                        'template': 'confirmacion_upload_estudios.html',
+                        'context': {
+                            'numero_errores_bloqueantes': numero_errores_bloqueantes,
+                            'numero_errores_advertencia': numero_errores_advertencia,
+                            'tiene_columnas_extras': tiene_columnas_extras,
+                            'numero_columnas_extras': numero_columnas_extras,
+                            'columnas_extras_str': columnas_extras_str
+                        },
+                        'mensajes': mensajes
+                    }
+                    request.session.save()
+                    yield _progress_done(request.path + '?mostrar_confirmacion=1', 'Validación completada')
+
+                return StreamingHttpResponse(gen_validar_estudios(), content_type='text/html')
             
         # Si se solicita un excel de errores, este se rellena en base a los errores detectados durante la validación
         elif 'excel_errores' in request.POST:
@@ -2881,46 +3110,58 @@ def registrar_envio(request,centro):
     return redirect('formulario_envios')
 
 def upload_excel_envios(request,centro):
+    # Mostrar confirmación después de validación con progreso
+    if request.GET.get('mostrar_confirmacion') and 'confirmacion_pendiente' in request.session:
+        datos_conf = request.session.pop('confirmacion_pendiente')
+        for msg in datos_conf.get('mensajes', []):
+            getattr(messages, msg['level'])(request, msg['text'])
+        return render(request, datos_conf['template'], datos_conf.get('context', {}))
     # Vista para subir un archivo Excel con los datos de envío de muestras
     centro_envio = agenda_envio.objects.get(id=centro)
     if request.method=='POST':
         form = UploadExcel(request.POST, request.FILES)
         if 'confirmar' in request.POST:
             # Si el usuario confirma, se registran los envíos en la base de datos
-            messages.success(request,'El envio se ha registrado correctamente')
             filas_validas = request.session.get('filas_validas',[])
-            with transaction.atomic():
-                for datos in filas_validas:
-                    muestra=Muestra.objects.get(nom_lab=datos['nom_lab'])
-                    envio = Envio.objects.create(
-                        muestra=muestra,
-                        volumen_enviado=datos['volumen_enviado'],
-                        unidad_volumen_enviado=datos['unidad_volumen_enviado'],
-                        concentracion_enviada=datos['concentracion_enviada'],
-                        unidad_concentracion_enviada=datos['unidad_concentracion_enviada'],
-                        centro_destino=datos['centro_destino'],
-                        lugar_destino=datos['lugar_destino'],
-                        fecha_envio=timezone.now(),
-                        usuario_envio=request.user
-                    )
-                    envio.save()
-                    # Actualizar el estado, la posición y el volumen de la muestra tras el envío
-                    if datos['volumen_enviado'] >= muestra.volumen_actual:
-                        muestra.volumen_actual = 0
-                        muestra.concentracion_actual = 0
-                        muestra.estado_actual = 'ENV'
-                        muestra.save()
-                        if Subposicion.objects.filter(muestra=muestra).exists():
-                            sub = Subposicion.objects.get(muestra=muestra)
-                            sub.muestra = None
-                            sub.save()
-                    else:
-                        muestra.volumen_actual -= float(datos['volumen_enviado'])
-                        muestra.estado_actual = 'PENV'
-                        muestra.save()
-                    
-            
-            return redirect('muestras_todas')
+            total = len(filas_validas)
+
+            def gen_confirmar_envios():
+                yield _progress_page_start('Registrando envíos', total)
+                try:
+                    with transaction.atomic():
+                        for i, datos in enumerate(filas_validas):
+                            muestra = Muestra.objects.get(nom_lab=datos['nom_lab'])
+                            Envio.objects.create(
+                                muestra=muestra,
+                                volumen_enviado=datos['volumen_enviado'],
+                                unidad_volumen_enviado=datos['unidad_volumen_enviado'],
+                                concentracion_enviada=datos['concentracion_enviada'],
+                                unidad_concentracion_enviada=datos['unidad_concentracion_enviada'],
+                                centro_destino=datos['centro_destino'],
+                                lugar_destino=datos['lugar_destino'],
+                                fecha_envio=timezone.now(),
+                                usuario_envio=request.user
+                            )
+                            if datos['volumen_enviado'] >= muestra.volumen_actual:
+                                muestra.volumen_actual = 0
+                                muestra.concentracion_actual = 0
+                                muestra.estado_actual = 'ENV'
+                                muestra.save()
+                                if Subposicion.objects.filter(muestra=muestra).exists():
+                                    sub = Subposicion.objects.get(muestra=muestra)
+                                    sub.muestra = None
+                                    sub.save()
+                            else:
+                                muestra.volumen_actual -= float(datos['volumen_enviado'])
+                                muestra.estado_actual = 'PENV'
+                                muestra.save()
+                            if _should_update(i, total):
+                                yield _progress_update(i + 1, total)
+                    yield _progress_done('/muestras/', 'Envíos registrados correctamente')
+                except Exception as e:
+                    yield _progress_error(str(e))
+
+            return StreamingHttpResponse(gen_confirmar_envios(), content_type='text/html')
         
         elif 'cancelar' in request.POST:
             # Si el usuario cancela, no se registra nada
@@ -3011,85 +3252,98 @@ def upload_excel_envios(request,centro):
                     'centros_envio': agenda_envio.objects.values_list('centro','lugar')
                 }
 
-                filas_validas = []
-                errores = {}
-                nom_lab_excel = set()
-                numero_registros = 0
+                total_filas = len(df)
 
-                # Recorrer las filas del excel para realizar la validación previa a la carga de datos
-                for idx, row in df.iterrows():
-                    numero_registros += 1
-                    fila = idx + 2 
-                    errores[fila]={"bloqueantes":[],"advertencias":[]}
-                    # Registrar en el excel el centro y lugar de envio seleccionados de la agenda de envios
-                    row['centro_destino'] = centro_envio.centro
-                    row['lugar_destino'] = centro_envio.lugar
+                def gen_validar_envios():
+                    filas_validas = []
+                    errores = {}
+                    nom_lab_excel = set()
+                    numero_registros = 0
 
-                    datos = {
-                        "nom_lab":norm(row['nom_lab']),
-                        "volumen_enviado":norm_code(row['volumen_enviado']),
-                        "unidad_volumen_enviado":norm(row['unidad_volumen_enviado']),
-                        "concentracion_enviada":norm_code(row['concentracion_enviada']),
-                        "unidad_concentracion_enviada":norm(row['unidad_concentracion_enviada'])
-                    }
+                    yield _progress_page_start('Validando envíos', total_filas)
+
+                    # Recorrer las filas del excel para realizar la validación previa a la carga de datos
+                    for idx, row in df.iterrows():
+                        numero_registros += 1
+                        fila = idx + 2 
+                        errores[fila]={"bloqueantes":[],"advertencias":[]}
+                        # Registrar en el excel el centro y lugar de envio seleccionados de la agenda de envios
+                        row['centro_destino'] = centro_envio.centro
+                        row['lugar_destino'] = centro_envio.lugar
+
+                        datos = {
+                            "nom_lab":norm(row['nom_lab']),
+                            "volumen_enviado":norm_code(row['volumen_enviado']),
+                            "unidad_volumen_enviado":norm(row['unidad_volumen_enviado']),
+                            "concentracion_enviada":norm_code(row['concentracion_enviada']),
+                            "unidad_concentracion_enviada":norm(row['unidad_concentracion_enviada'])
+                        }
               
-                    # Comprobar si los campos obligatorios han sido rellenados
-                    obligatorios = ["nom_lab", "volumen_enviado", "unidad_volumen_enviado", "concentracion_enviada", "unidad_concentracion_enviada"]
+                        # Comprobar si los campos obligatorios han sido rellenados
+                        obligatorios = ["nom_lab", "volumen_enviado", "unidad_volumen_enviado", "concentracion_enviada", "unidad_concentracion_enviada"]
 
-                    for campo in obligatorios:
-                        if not datos.get(campo):
-                            errores[fila]["bloqueantes"].append(f"campo_obligatorio_vacio:{campo}")
+                        for campo in obligatorios:
+                            if not datos.get(campo):
+                                errores[fila]["bloqueantes"].append(f"campo_obligatorio_vacio:{campo}")
                     
-                     # Comprobar si los campos estan en el formato correcto
-                    for campo in ['volumen_enviado', 'concentracion_enviada']:
-                        if datos[campo] != None:
-                            try:
-                                datos[campo]=float(datos[campo])
-                            except (TypeError, ValueError):
-                                errores[fila]["bloqueantes"].append(f"formato_incorrecto:{campo}")
+                         # Comprobar si los campos estan en el formato correcto
+                        for campo in ['volumen_enviado', 'concentracion_enviada']:
+                            if datos[campo] != None:
+                                try:
+                                    datos[campo]=float(datos[campo])
+                                except (TypeError, ValueError):
+                                    errores[fila]["bloqueantes"].append(f"formato_incorrecto:{campo}")
                     
-                    # Comprobar que la muestra exista en la base de datos y no esté duplicada en el excel
-                    nom_lab = datos["nom_lab"]
-                    if nom_lab not in cache["muestras"]:
-                        errores[fila]["bloqueantes"].append("muestra_inexistente")
-                    if nom_lab in nom_lab_excel:
-                        errores[fila]["bloqueantes"].append("muestra_duplicada_excel")
-                    else:
-                        nom_lab_excel.add(nom_lab)
+                        # Comprobar que la muestra exista en la base de datos y no esté duplicada en el excel
+                        nom_lab = datos["nom_lab"]
+                        if nom_lab not in cache["muestras"]:
+                            errores[fila]["bloqueantes"].append("muestra_inexistente")
+                        if nom_lab in nom_lab_excel:
+                            errores[fila]["bloqueantes"].append("muestra_duplicada_excel")
+                        else:
+                            nom_lab_excel.add(nom_lab)
 
-                    # Comprobar que el volumen a enviar no sea mayor al actual
-                    volumen_envio = datos["volumen_enviado"]
-                    if nom_lab in cache["volumenes_actuales"]:
-                        if volumen_envio > cache["volumenes_actuales"][nom_lab]:
-                            errores[fila]["bloqueantes"].append("volumen_alto")
+                        # Comprobar que el volumen a enviar no sea mayor al actual
+                        volumen_envio = datos["volumen_enviado"]
+                        if nom_lab in cache["volumenes_actuales"]:
+                            if volumen_envio > cache["volumenes_actuales"][nom_lab]:
+                                errores[fila]["bloqueantes"].append("volumen_alto")
 
-                    # Comprobar que el estado de la muestra sea 'Disponible' o 'Parcialmente enviada'
-                    if nom_lab not in cache['estados_actuales']:
-                        errores[fila]["bloqueantes"].append("estado_no_disponible")
+                        # Comprobar que el estado de la muestra sea 'Disponible' o 'Parcialmente enviada'
+                        if nom_lab not in cache['estados_actuales']:
+                            errores[fila]["bloqueantes"].append("estado_no_disponible")
 
-                    # Rellenar con el centro y lugar de destino
-                    datos['centro_destino'] = centro_envio.centro
-                    datos['lugar_destino'] = centro_envio.lugar
+                        # Rellenar con el centro y lugar de destino
+                        datos['centro_destino'] = centro_envio.centro
+                        datos['lugar_destino'] = centro_envio.lugar
                     
-                    # Registrar filas validas
-                    if not errores[fila]["bloqueantes"]:
-                        datos['fila'] = fila
-                        filas_validas.append(datos)
+                        # Registrar filas validas
+                        if not errores[fila]["bloqueantes"]:
+                            datos['fila'] = fila
+                            filas_validas.append(datos)
+
+                        if _should_update(idx, total_filas):
+                            yield _progress_update(idx + 1, total_filas)
                 
-                request.session['filas_validas']=filas_validas
-                request.session['errores'] = errores
+                    request.session['filas_validas'] = filas_validas
+                    request.session['errores'] = errores
 
-                # Mensajes de la información de la subida 
-                messages.info(request, f'El excel subido tiene {numero_registros} registros.')
-                numero_errores = 0
-                for fila in errores:
-                    if errores[fila]['bloqueantes']:
-                        numero_errores +=1
-                if numero_errores > 0:
-                    messages.error(request, f'Pero contiene {numero_errores} filas con errores graves.')
-                else:
-                    messages.success(request, 'Y no tiene errores en ningún campo.')
-                return render(request,'confirmacion_upload_envio.html') 
+                    mensajes = [{'level': 'info', 'text': f'El excel subido tiene {numero_registros} registros.'}]
+                    numero_errores = sum(1 for f in errores if errores[f]['bloqueantes'])
+                    if numero_errores > 0:
+                        mensajes.append({'level': 'error', 'text': f'Pero contiene {numero_errores} filas con errores graves.'})
+                    else:
+                        mensajes.append({'level': 'success', 'text': 'Y no tiene errores en ningún campo.'})
+
+                    request.session['confirmacion_pendiente'] = {
+                        'template': 'confirmacion_upload_envio.html',
+                        'context': {},
+                        'mensajes': mensajes
+                    }
+                    request.session.save()
+                    yield _progress_done(request.path + '?mostrar_confirmacion=1', 'Validación completada')
+
+                return StreamingHttpResponse(gen_validar_envios(), content_type='text/html')
         # Si se solicita un excel de errores, este se rellena en base a los errores detectados durante la validación 
         elif 'excel_errores' in request.POST:
                 # Leer los errores y el excel de la sesión
