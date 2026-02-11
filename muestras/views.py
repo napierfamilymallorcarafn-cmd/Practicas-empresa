@@ -327,7 +327,7 @@ def acciones_post(request):
             if muestras_seleccionadas:
                 muestras_a_procesar = Muestra.objects.filter(id__in=muestras_seleccionadas)
                 for muestra in muestras_a_procesar:
-                    eliminar_muestra(request, muestra.id_individuo, muestra.nom_lab) 
+                    eliminar_muestra(request, muestra.nom_lab)
         elif 'envio' in request.POST:
             # Se guardan las muestras seleccionadas en la sesión y se redirigue al usuario a la agenda de envíos
             if 'muestras_envio' in request.session:
@@ -2109,7 +2109,7 @@ def historial_localizaciones_muestra(request,muestra_id):
     muestra = Muestra.objects.get(id=muestra_id)
     historiales = historial_localizaciones.objects.filter(muestra=muestra).order_by('-fecha_asignacion')
     if muestra.estado_actual=='Destruida':
-        estado_destruccion = registro_destruido.objects.get(muestra=muestra)
+        estado_destruccion = registro_destruido.objects.filter(muestra=muestra).first()
     else:
         estado_destruccion = None
     template = loader.get_template('historial_localizaciones.html')
