@@ -149,7 +149,7 @@ Lista de Muestras
                   <option value="DISP">Disponible</option>
                   <option value="PENV">Parcialmente enviada</option>
                   <option value="ENV">Enviada</option>
-                  <option value="Destruida">Destruida</option>
+                  <option value="DEST">Destruida</option>
                 </select>
             </div>
 
@@ -323,7 +323,7 @@ Lista de Muestras
  
   <tbody>
     {% for x in muestras_page %}
-   <tr class="{% if x.estado_actual == 'DISP' %}status-available{% elif x.estado_actual == 'PENV' %}status-processing{% elif x.estado_actual == 'Destruida' %}status-destroyed{% else %}status-enviada{% endif %}">
+   <tr class="{% if x.estado_actual == 'DISP' %}status-available{% elif x.estado_actual == 'PENV' %}status-processing{% elif x.estado_actual == 'DEST' %}status-destroyed{% else %}status-enviada{% endif %}">
       <td><input type="checkbox" name="muestra_id" value ="{{x.id}}" class="form-control"> <a href="/muestras/detalles_muestra/{{x.nom_lab}}/editar" class="chip-detalle">
                         ✍ Editar
                     </a></td>

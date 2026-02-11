@@ -335,7 +335,7 @@ def acciones_post(request):
                 del request.session['muestras_envio']
             for muestra in muestras_seleccionadas:
                 # Se eliminan las muestras destruidas de la lista de envío
-                if Muestra.objects.get(id=muestra).estado_actual == 'Destruida':
+                if Muestra.objects.get(id=muestra).estado_actual == 'DEST':
                     muestras_seleccionadas.remove(muestra)
             request.session['muestras_envio']=muestras_seleccionadas
             return redirect('agenda')
@@ -345,7 +345,7 @@ def acciones_post(request):
                 numero_muestras_destruidas = 0
                 muestras_a_destruir = Muestra.objects.filter(id__in=muestras_seleccionadas)
                 for sample in muestras_a_destruir:
-                    sample.estado_actual = 'Destruida'
+                    sample.estado_actual = 'DEST'
                     sample.volumen_actual = 0
                     sample.concentracion_actual = 0
                     sample.save()
