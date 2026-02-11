@@ -72,24 +72,9 @@ Archivo de muestras
             <li> <input type="checkbox" name="rack" value = "{{rack.id}}" class="form-control"><button type ="button" onclick = "desplegar(this,'cajas')" class="dropbtn">Rack {{ rack.numero }} - Posición dentro del estante: {{rack.posicion_rack_estante}}</button>
               <ul class ="cajas">
                 {% for caja in rack.cajas.all %}
-                  <li> <input type="checkbox" name="caja" value = "{{caja.id}}" class="form-control"><button type ="button" onclick = "desplegar(this,'muestras')" class="dropbtn">Caja {{ caja.numero }} - Posición dentro del rack: {{caja.posicion_caja_rack}}<span class="chip">{{ caja.numero_muestras }} muestras</span></button>
-                    <ul class="muestras">
-                      {% for subposicion in caja.subposiciones.all %}
-                        {% if subposicion.vacia == False %}
-                        <li><span class="
-                                  estado-icono
-                                  {% if subposicion.muestras.estado_actual == 'Disponible' %}icono-disponible
-                                  {% elif subposicion.muestras.estado_actual == 'Parcialmente enviada' %}icono-parcial
-                                  {% endif %}
-                              "><svg class="icono-estado {{ clase_estado }}" width="14" height="14" viewBox="0 0 24 24">
-                                <path fill="currentColor" d="M7 2v2h1v3.586l-3.707 3.707A1 1 0 0 0 4 12v8a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-8a1 1 0 0 0-.293-.707L16 7.586V4h1V2H7Zm3 2h4v3.414l2 2V12H8V9.414l2-2V4Zm-2 10h8v6a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-6Z"/>
-                              </svg>
-                              </span><input type="checkbox" name= "subposicion" value = "{{subposicion.id}}"  class="form-control"> Subposición {{ subposicion.numero }}: <a href="/muestras/detalles_muestra/{{subposicion.muestra.nom_lab}}">{{subposicion.muestra.nom_lab}}</a> 
-                          </li>
-                        {% else %}
-                        <li> <input type="checkbox" name= "subposicion" value = "{{subposicion.id}}"  class="form-control">Subposición {{ subposicion.numero }}: Vacia</li>
-                        {% endif %}
-                      {% endfor %}
+                  <li> <input type="checkbox" name="caja" value = "{{caja.id}}" class="form-control"><button type ="button" onclick = "desplegarCaja(this, {{caja.id}})" class="dropbtn" data-caja-id="{{caja.id}}">Caja {{ caja.numero }} - Posición dentro del rack: {{caja.posicion_caja_rack}}<span class="chip">{{ caja.numero_muestras }} muestras</span></button>
+                    <ul class="muestras" data-caja-id="{{caja.id}}">
+                      <li class="loading-placeholder" style="color:#888; font-style:italic; padding:6px 0;">Haz clic para cargar las subposiciones…</li>
                     </ul>
                   </li>
                 {% endfor %} 

@@ -48,6 +48,7 @@ urlpatterns = [
     path('api/get_racks_por_estante/', views.get_racks_por_estante, name='get_racks_por_estante'),
     path('api/get_cajas_por_rack/', views.get_cajas_por_rack, name='get_cajas_por_rack'),
     path('api/get_subposiciones_por_caja/', views.get_subposiciones_por_caja, name='get_subposiciones_por_caja'),
+    path('api/get_subposiciones_por_caja_tree/', views.get_subposiciones_por_caja_tree, name='get_subposiciones_por_caja_tree'),
 ]
 
 # Ajuste para poder servir los archivos estáticos cuando el DEBUG es True

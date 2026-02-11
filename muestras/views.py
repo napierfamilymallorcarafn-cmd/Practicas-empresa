@@ -210,6 +210,26 @@ def get_subposiciones_por_caja(request):
     return JsonResponse({'subposiciones': list(subposiciones)})
 
 @login_required
+def get_subposiciones_por_caja_tree(request):
+    """Devuelve TODAS las subposiciones de una caja con info de muestra (para el árbol de archivo)."""
+    caja_id = request.GET.get('caja_id')
+    if not caja_id:
+        return JsonResponse({'error': 'Caja no especificada'}, status=400)
+    subposiciones = Subposicion.objects.filter(caja_id=caja_id).select_related('muestra').order_by('numero')
+    resultado = []
+    for s in subposiciones:
+        item = {
+            'id': s.id,
+            'numero': s.numero,
+            'vacia': s.vacia,
+        }
+        if not s.vacia and s.muestra:
+            item['muestra_nom_lab'] = s.muestra.nom_lab
+            item['muestra_estado'] = s.muestra.estado_actual or ''
+        resultado.append(item)
+    return JsonResponse({'subposiciones': resultado})
+
+@login_required
 
 # Vistas para Muestras
 @permission_required('muestras.can_view_muestras_web')
@@ -1745,13 +1765,13 @@ def localizaciones(request):
         )
     )
 
-    # Prefetch para optimizar consultas
+    # Prefetch para optimizar consultas (sin subposiciones, se cargan por AJAX)
     congeladores = Congelador.objects.prefetch_related(
         Prefetch(
             'estantes__racks__cajas',
             queryset=cajas_qs
-        ),
-        'estantes__racks__cajas__subposiciones')
+        )
+    )
 
 
     
