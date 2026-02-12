@@ -45,14 +45,14 @@ UPLOAD_MESSAGES = {
 EXCEL_COLORS = {
     # Colores para filas con errores
     'error_row': 'F8D7DA',        # Rojo claro - fondo de fila con error
-    'error_cell': 'D8172B',       # Rojo fuerte - celdas específicas con error
+    'error_cell': 'F5C2C7',       # Rojo fuerte - celdas específicas con error
     
     # Colores para filas con advertencias
     'warning_row': 'FFF3CD',      # Amarillo claro - fondo de fila con advertencia
-    'warning_cell': 'FCD767',     # Amarillo fuerte - celdas específicas con advertencia
+    'warning_cell': 'FFECB5',     # Amarillo fuerte - celdas específicas con advertencia
     
     # Colores para columnas extras
-    'extra_column': 'D8172B',     # Rojo fuerte - igual que error_cell
+    'extra_column': 'F5C2C7',     # Rojo fuerte - igual que error_cell
 }
 
 # ============================================================================

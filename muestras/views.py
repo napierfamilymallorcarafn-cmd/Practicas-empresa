@@ -1158,8 +1158,6 @@ def upload_excel(request):
                     ws = wb.active
                     # Definir los estilos para pintar el excel usando configuración centralizada
                     colors = get_excel_colors()
-                    FILL_ERROR_ROW = PatternFill("solid", fgColor=colors['error_row'])
-                    FILL_WARN_ROW  = PatternFill("solid", fgColor=colors['warning_row'])
                     FILL_ERROR_CELL = PatternFill("solid", fgColor=colors['error_cell'])
                     FILL_WARN_CELL  = PatternFill("solid", fgColor=colors['warning_cell'])
                     FILL_EXTRA_COL  = PatternFill("solid", fgColor=colors['extra_column'])
@@ -1226,11 +1224,6 @@ def upload_excel(request):
                         has_warn = bool(info.get("advertencias", []))
                         if not has_error and not has_warn:
                             continue
-
-                        # Si hay errores, pintar fila completa con color claro
-                        if has_error:
-                            for col in range(1, ws.max_column + 1):
-                                ws.cell(row=int(fila), column=col).fill = FILL_ERROR_ROW
 
                         # Colorear celdas específicas y construir mensajes
                         mensajes = []
@@ -1581,7 +1574,6 @@ def cambio_posicion(request):
                     ws = wb.active
                     # Definir los estilos para pintar el excel usando configuración centralizada
                     colors = get_excel_colors()
-                    FILL_ERROR_ROW = PatternFill("solid", fgColor=colors['error_row'])
                     FILL_ERROR_CELL = PatternFill("solid", fgColor=colors['error_cell'])
                     FILL_EXTRA_COL  = PatternFill("solid", fgColor=colors['extra_column'])
                     # Diccionario de mensajes
@@ -1624,10 +1616,6 @@ def cambio_posicion(request):
                         has_error = bool(info["bloqueantes"])
                         if not has_error:
                             continue
-
-                        # Pintar fila completa con color claro
-                        for col in range(1, ws.max_column + 1):
-                            ws.cell(row=int(fila), column=col).fill = FILL_ERROR_ROW
 
                         # Colorear celdas específicas y construir mensajes
                         mensajes = []
@@ -2202,8 +2190,6 @@ def upload_excel_localizaciones(request):
             
             # Definir los estilos para pintar el excel usando configuración centralizada
             colors = get_excel_colors()
-            FILL_ERROR_ROW = PatternFill("solid", fgColor=colors['error_row'])
-            FILL_WARN_ROW = PatternFill("solid", fgColor=colors['warning_row'])
             FILL_ERROR_CELL = PatternFill("solid", fgColor=colors['error_cell'])
             FILL_ERROR_COL = PatternFill("solid", fgColor=colors['extra_column'])
             
@@ -2258,10 +2244,6 @@ def upload_excel_localizaciones(request):
                 has_error = bool(info.get("bloqueantes"))
                 if not has_error:
                     continue
-
-                # Pintar fila completa con color claro
-                for col in range(1, ws.max_column + 1):
-                    ws.cell(row=int(fila_numero), column=col).fill = FILL_ERROR_ROW
 
                 # Colorear celdas específicas y construir mensajes
                 mensajes = []
@@ -2813,8 +2795,6 @@ def excel_estudios(request):
                     ws = wb.active
                     # Definir los estilos para pintar el excel usando configuración centralizada
                     colors = get_excel_colors()
-                    FILL_ERROR_ROW = PatternFill("solid", fgColor=colors['error_row'])
-                    FILL_WARN_ROW  = PatternFill("solid", fgColor=colors['warning_row'])
                     FILL_ERROR_CELL = PatternFill("solid", fgColor=colors['error_cell'])
                     FILL_WARN_CELL  = PatternFill("solid", fgColor=colors['warning_cell'])
                     FILL_EXTRA_COL  = PatternFill("solid", fgColor=colors['extra_column'])
@@ -2858,11 +2838,6 @@ def excel_estudios(request):
                         has_warn = bool(info.get("advertencias", []))
                         if not has_error and not has_warn:
                             continue
-
-                        # Si hay errores, pintar fila completa con color claro
-                        if has_error:
-                            for col in range(1, ws.max_column + 1):
-                                ws.cell(row=int(fila), column=col).fill = FILL_ERROR_ROW
 
                         # Colorear celdas específicas y construir mensajes
                         mensajes = []
@@ -3480,7 +3455,6 @@ def upload_excel_envios(request,centro):
                 wb = openpyxl.load_workbook(excel_file)
                 ws = wb.active
                 # Definir los estilos para pintar el excel
-                FILL_ERROR_ROW = PatternFill("solid", fgColor="F8D7DA")   # rojo claro
                 FILL_ERROR_CELL = PatternFill("solid", fgColor="F5C2C7")  # rojo fuerte
                 # Diccionario de mensajes
                 MENSAJES_ERROR = {
@@ -3523,10 +3497,6 @@ def upload_excel_envios(request,centro):
                     has_error = bool(info["bloqueantes"])
                     if not has_error:
                         continue
-
-                    # Pintar fila completa con color claro
-                    for col in range(1, ws.max_column + 1):
-                        ws.cell(row=int(fila), column=col).fill = FILL_ERROR_ROW
 
                     # Colorear celdas específicas y construir mensajes
                     mensajes = []
