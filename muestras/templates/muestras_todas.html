@@ -323,7 +323,7 @@ Lista de Muestras
         <th class="wrap-text">ID Individuo</th>
         <th>Nombre</th>
         <th>Localización</th>
-        <th class="wrap-text">Historial de localizaciones</th>
+        <th class="wrap-text">Historial localizaciones</th>
         <th>Material</th>
         <th >Volumen</th>
         <th >Concentración</th>
@@ -336,8 +336,8 @@ Lista de Muestras
         <th class="wrap-text">Lugar de procedencia</th>
         <th class="wrap-text">Estado actual</th>
         <th>Estudio</th>
-        <th class="wrap-text">Historial de estudios</th>
-        <th class="wrap-text">Historial de envios</th>
+        <th class="wrap-text">Historial estudios</th>
+        <th class="wrap-text">Historial envios</th>
       </tr>
     </thead>
  
@@ -354,7 +354,7 @@ Lista de Muestras
       {% else %}
       <td>Sin asignar</td>
       {% endif %}
-      <td class="wrap-text"><a href="{%url 'historial_localizaciones' x.id%}">Ver historial de localizaciones</a></td>
+      <td class="wrap-text"><a href="{%url 'historial_localizaciones' x.id%}">Ver</a></td>
       <td>
       {% if x.id_material != None %}
         {{ x.id_material }}
@@ -422,7 +422,7 @@ Lista de Muestras
       {% endif %}
     </td>
     <td class="wrap-text">
-      <a href="{%url 'historial_estudios' x.id %}">Ver estudios</a>
+      <a href="{%url 'historial_estudios' x.id %}">Ver</a>
     </td>
     <td class="wrap-text">{%if x.envio.all%}
       <a href="{% url 'historial_envios' x.id %}">Ver envios</a>
