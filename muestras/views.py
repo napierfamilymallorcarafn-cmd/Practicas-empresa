@@ -21,7 +21,7 @@ from django.db.models import Q
 from django.utils import timezone 
 from django.db.models import Count, Q, Prefetch
 from django.core.exceptions import ObjectDoesNotExist
-from openpyxl.styles import PatternFill
+from openpyxl.styles import PatternFill, Font, Alignment
 from openpyxl.comments import Comment
 from datetime import date
 from .parameters_config import get_upload_messages, get_excel_colors
@@ -3619,3 +3619,83 @@ def eliminar_centro(request):
             centro = agenda_envio.objects.get(id=centro_id)
             centro.delete()
     return redirect('agenda')
+
+
+@login_required
+@permission_required('muestras.can_view_localizaciones_web')
+def exportar_posiciones_libres(request):
+    """Vista que genera y descarga un Excel con las posiciones libres (subposiciones vacías)
+    de los congeladores seleccionados, mostrando la jerarquía completa."""
+    congelador_ids = request.GET.getlist('congelador')
+    if not congelador_ids:
+        messages.error(request, 'No se ha seleccionado ningún congelador.')
+        return redirect('localizaciones_todas')
+
+    # Obtener las subposiciones vacías de los congeladores seleccionados con toda la jerarquía
+    subposiciones_libres = (
+        Subposicion.objects
+        .filter(vacia=True, caja__rack__estante__congelador__id__in=congelador_ids)
+        .select_related('caja__rack__estante__congelador')
+        .order_by(
+            'caja__rack__estante__congelador__congelador',
+            'caja__rack__estante__numero',
+            'caja__rack__posicion_rack_estante',
+            'caja__rack__numero',
+            'caja__posicion_caja_rack',
+            'caja__numero',
+            'numero',
+        )
+    )
+
+    # Crear el libro Excel
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Posiciones libres"
+
+    # Cabeceras
+    cabeceras = [
+        'Congelador',
+        'Estante',
+        'Posición rack en estante',
+        'Rack',
+        'Posición caja en rack',
+        'Caja',
+        'Subposición disponible',
+    ]
+    header_fill = Font(bold=True)
+
+    for col_num, cabecera in enumerate(cabeceras, 1):
+        celda = ws.cell(row=1, column=col_num, value=cabecera)
+        celda.font = header_fill
+
+    # Rellenar filas
+    for fila_num, sub in enumerate(subposiciones_libres, 2):
+        caja = sub.caja
+        rack = caja.rack
+        estante = rack.estante
+        congelador = estante.congelador
+        ws.cell(row=fila_num, column=1, value=congelador.congelador)
+        ws.cell(row=fila_num, column=2, value=estante.numero)
+        ws.cell(row=fila_num, column=3, value=rack.posicion_rack_estante)
+        ws.cell(row=fila_num, column=4, value=rack.numero)
+        ws.cell(row=fila_num, column=5, value=caja.posicion_caja_rack)
+        ws.cell(row=fila_num, column=6, value=caja.numero)
+        ws.cell(row=fila_num, column=7, value=sub.numero)
+
+    # Ajustar ancho de columnas
+    for col_num, cabecera in enumerate(cabeceras, 1):
+        col_letter = openpyxl.utils.get_column_letter(col_num)
+        ws.column_dimensions[col_letter].width = max(len(cabecera) + 4, 18)
+
+    # Nombres de congeladores para el nombre del archivo
+    congeladores_selec = Congelador.objects.filter(id__in=congelador_ids)
+    nombres = '_'.join([c.congelador for c in congeladores_selec])
+    nombre_archivo = f'posiciones_libres_{nombres}.xlsx'
+
+    # Devolver la respuesta como descarga
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = f'attachment; filename="{nombre_archivo}"'
+    wb.save(response)
+    return response

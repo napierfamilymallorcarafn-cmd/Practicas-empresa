@@ -25,6 +25,11 @@ Archivo de muestras
     ➕ Añadir posiciones
     </button>
 
+    <button type="button" class="accion-btn accion-exportar" id="exportar_libres" disabled
+        onclick="exportarPosicionesLibres()">
+    📊⬇ Exportar posiciones libres
+    </button>
+
     <button type="submit" class="accion-btn accion-peligro" id="eliminar" name="eliminar"
         onclick="return confirm('¿Quieres eliminar las posiciones seleccionadas?')" disabled>
         🗑 Eliminar posiciones
@@ -40,10 +45,29 @@ Archivo de muestras
     botonEliminar.disabled = !haySeleccionados;
   }
 
+  function actualizarEstadoBotonExportar() {
+    const checkboxesCongelador = document.querySelectorAll('input[type="checkbox"][name="congelador"]');
+    const botonExportar = document.getElementById('exportar_libres');
+    const hayCongeladorSeleccionado = Array.from(checkboxesCongelador).some(cb => cb.checked);
+    botonExportar.disabled = !hayCongeladorSeleccionado;
+  }
+
+  function exportarPosicionesLibres() {
+    const checkboxesCongelador = document.querySelectorAll('input[type="checkbox"][name="congelador"]:checked');
+    const ids = Array.from(checkboxesCongelador).map(cb => cb.value);
+    if (ids.length === 0) return;
+    const params = ids.map(id => 'congelador=' + encodeURIComponent(id)).join('&');
+    window.location.href = '{% url "exportar_posiciones_libres" %}?' + params;
+  }
+
   document.addEventListener('DOMContentLoaded', function() {
     const checkboxes = document.querySelectorAll('input[type="checkbox"][name="congelador"], input[type="checkbox"][name="estante"], input[type="checkbox"][name="rack"], input[type="checkbox"][name="caja"], input[type="checkbox"][name="subposicion"]');
     checkboxes.forEach(checkbox => {
       checkbox.addEventListener('change', actualizarEstadoBotonEliminar);
+    });
+    const checkboxesCongelador = document.querySelectorAll('input[type="checkbox"][name="congelador"]');
+    checkboxesCongelador.forEach(checkbox => {
+      checkbox.addEventListener('change', actualizarEstadoBotonExportar);
     });
   });
 </script>
