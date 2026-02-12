@@ -7,6 +7,76 @@ Repositorio de documentación del estudio {{estudio.id_estudio}}
 <!-- Página que muestra el repositorio de documentos asociados a un estudio específico -->
 {% block content %}
 <link rel="stylesheet" href="{% static 'muestras_todas.css' %}">
+<style>
+  .multiselect-wrapper {
+    position: relative;
+    width: 100%;
+  }
+  .multiselect-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 14px;
+    min-height: 34px;
+    user-select: none;
+  }
+  .multiselect-toggle:hover { border-color: #999; }
+  .multiselect-toggle .arrow { margin-left: 8px; font-size: 10px; }
+  .multiselect-dropdown {
+    display: none;
+    position: absolute;
+    z-index: 1000;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    max-height: 220px;
+    overflow-y: auto;
+    width: 100%;
+    min-width: 180px;
+  }
+  .multiselect-wrapper.open .multiselect-dropdown { display: block; }
+  .multiselect-dropdown label {
+    display: flex;
+    align-items: center;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 13px;
+    gap: 6px;
+  }
+  .multiselect-dropdown label:hover { background: #f0f4ff; }
+  .multiselect-dropdown input[type="checkbox"] { margin: 0; }
+  .multiselect-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    flex: 1;
+  }
+  .multiselect-tag {
+    background: #e0e7ff;
+    color: #1a3d7c;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .multiselect-tag-remove {
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 14px;
+    line-height: 1;
+    color: #1a3d7c;
+  }
+  .multiselect-tag-remove:hover { color: #c00; }
+  .multiselect-placeholder { color: #999; }
+</style>
 <div class="form-container">
 
     <!-- BARRA DE ACCIONES -->
@@ -42,14 +112,15 @@ Repositorio de documentación del estudio {{estudio.id_estudio}}
 
                 <div class="filter-field">
                     <label for="usuario">Usuario</label>
-                    <select name="usuario" id="usuario">
-                        <option value="">Todos</option>
+                    <div class="multiselect-wrapper" data-name="usuario">
+                      <input type="hidden" name="usuario" value="">
+                      <div class="multiselect-toggle"><span class="multiselect-tags"><span class="multiselect-placeholder">Seleccionar...</span></span><span class="arrow">▼</span></div>
+                      <div class="multiselect-dropdown">
                         {% for user in usuarios %}
-                            <option value="{{ user.username }}">
-                                {{ user.username }}
-                            </option>
+                          <label><input type="checkbox" value="{{ user.username }}"> {{ user.username }}</label>
                         {% endfor %}
-                    </select>
+                      </div>
+                    </div>
                 </div>
             </div>
 
@@ -66,6 +137,98 @@ Repositorio de documentación del estudio {{estudio.id_estudio}}
         </div>
     </div>
     </div>
+
+    <!-- MULTISELECT JS -->
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      var params = new URLSearchParams(window.location.search);
+
+      document.querySelectorAll('.multiselect-wrapper').forEach(function(wrapper) {
+        var name = wrapper.getAttribute('data-name');
+        var toggle = wrapper.querySelector('.multiselect-toggle');
+        var dropdown = wrapper.querySelector('.multiselect-dropdown');
+        var hiddenInput = wrapper.querySelector('input[type="hidden"]');
+        var tagsContainer = wrapper.querySelector('.multiselect-tags');
+        var checkboxes = dropdown.querySelectorAll('input[type="checkbox"]');
+
+        var currentVal = params.get(name) || '';
+        if (currentVal) {
+          var vals = currentVal.split(';');
+          checkboxes.forEach(function(cb) {
+            if (vals.indexOf(cb.value) !== -1) cb.checked = true;
+          });
+          hiddenInput.value = currentVal;
+        }
+
+        function renderTags() {
+          var selected = [];
+          checkboxes.forEach(function(cb) {
+            if (cb.checked) selected.push({ value: cb.value, label: cb.parentElement.textContent.trim() });
+          });
+          tagsContainer.innerHTML = '';
+          if (selected.length === 0) {
+            tagsContainer.innerHTML = '<span class="multiselect-placeholder">Seleccionar...</span>';
+          } else {
+            selected.forEach(function(item) {
+              var tag = document.createElement('span');
+              tag.className = 'multiselect-tag';
+              tag.textContent = item.label;
+              var removeBtn = document.createElement('span');
+              removeBtn.className = 'multiselect-tag-remove';
+              removeBtn.textContent = '×';
+              removeBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                checkboxes.forEach(function(cb) {
+                  if (cb.value === item.value) cb.checked = false;
+                });
+                updateValue();
+              });
+              tag.appendChild(removeBtn);
+              tagsContainer.appendChild(tag);
+            });
+          }
+        }
+
+        function updateValue() {
+          var vals = [];
+          checkboxes.forEach(function(cb) { if (cb.checked) vals.push(cb.value); });
+          hiddenInput.value = vals.join(';');
+          renderTags();
+        }
+
+        toggle.addEventListener('click', function(e) {
+          e.stopPropagation();
+          document.querySelectorAll('.multiselect-wrapper.open').forEach(function(other) {
+            if (other !== wrapper) other.classList.remove('open');
+          });
+          wrapper.classList.toggle('open');
+        });
+
+        checkboxes.forEach(function(cb) { cb.addEventListener('change', function() { updateValue(); }); });
+        renderTags();
+      });
+
+      document.addEventListener('click', function(e) {
+        if (!e.target.closest('.multiselect-wrapper')) {
+          document.querySelectorAll('.multiselect-wrapper.open').forEach(function(w) { w.classList.remove('open'); });
+        }
+      });
+
+      // Auto-abrir filtros si hay filtros activos
+      var filterKeys = ['categoria', 'usuario'];
+      var hayFiltros = filterKeys.some(function(k) { return params.get(k); });
+      if (hayFiltros) {
+        var filtroHeader = document.querySelector('.collapsible-header');
+        if (filtroHeader) {
+          filtroHeader.classList.add('active');
+          var filtroContent = filtroHeader.nextElementSibling;
+          filtroContent.style.maxHeight = filtroContent.scrollHeight + 'px';
+          filtroContent.classList.add('open');
+        }
+      }
+    });
+    </script>
+
     <script>
 document.addEventListener("DOMContentLoaded", function() {
     const headers = document.querySelectorAll(".collapsible-header");
@@ -109,22 +272,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const thead = table.querySelector('thead');
     const tbody = table.querySelector('tbody');
     const rows = Array.from(tbody.querySelectorAll('tr'));
-
-    // Crear contenedor para el buscador
-    const searchContainer = document.createElement('div');
-    searchContainer.style.cssText = 'margin-bottom: 15px; display: flex; align-items: center; gap: 10px;';
-    searchContainer.innerHTML = '<label style="font-weight: 500; color: #333;">Buscar:</label><input type="text" id="table-search" placeholder="Escribe para buscar..." style="padding: 8px 12px; border: 1px solid #dfe3e6; border-radius: 6px; font-size: 14px; width: 300px;">';
-    
-    table.parentNode.insertBefore(searchContainer, table);
-    
-    const searchInput = document.getElementById('table-search');
-    searchInput.addEventListener('keyup', function() {
-        const filter = this.value.toLowerCase();
-        rows.forEach(row => {
-            const text = row.textContent.toLowerCase();
-            row.style.display = text.includes(filter) ? '' : 'none';
-        });
-    });
 
     const headers = thead.querySelectorAll('th');
     const sortStates = {};
@@ -206,6 +353,17 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
 
         <div class="table-container">
+
+            <!-- Buscador global (server-side) -->
+            <div style="margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
+                <label for="busqueda-input" style="font-weight: 500; color: #333;">Buscar:</label>
+                <input type="text" id="busqueda-input" value="{{ busqueda|default:'' }}" placeholder="Escribe para buscar en los documentos..." style="padding: 8px 12px; border: 1px solid #dfe3e6; border-radius: 6px; font-size: 14px; width: 300px;">
+                <button type="button" onclick="ejecutarBusqueda()" class="btn btn-secondary" style="padding: 8px 14px;">🔍 Buscar</button>
+                {% if busqueda %}
+                    <button type="button" onclick="limpiarBusqueda()" class="btn btn-secondary" style="padding: 8px 14px;">✖ Limpiar búsqueda</button>
+                {% endif %}
+            </div>
+
             <table class="styled-table">
                 <thead>
                     <tr>
@@ -262,6 +420,7 @@ document.addEventListener('DOMContentLoaded', function() {
         <option value="25" {% if items_por_pagina == 25 %}selected{% endif %}>25</option>
         <option value="50" {% if items_por_pagina == 50 %}selected{% endif %}>50</option>
         <option value="100" {% if items_por_pagina == 100 %}selected{% endif %}>100</option>
+        <option value="todas" {% if items_por_pagina == 'todas' %}selected{% endif %}>Todas</option>
       </select>
     </form>
   </div>
@@ -311,4 +470,32 @@ document.addEventListener('DOMContentLoaded', function() {
     {% endif %}
   </div>
 </div>
+
+<script>
+function ejecutarBusqueda() {
+  var texto = document.getElementById('busqueda-input').value.trim();
+  var params = new URLSearchParams(window.location.search);
+  if (texto) {
+    params.set('busqueda', texto);
+  } else {
+    params.delete('busqueda');
+  }
+  params.delete('page');
+  window.location.href = window.location.pathname + '?' + params.toString();
+}
+function limpiarBusqueda() {
+  var params = new URLSearchParams(window.location.search);
+  params.delete('busqueda');
+  params.delete('page');
+  window.location.href = window.location.pathname + '?' + params.toString();
+}
+document.addEventListener('DOMContentLoaded', function() {
+  var input = document.getElementById('busqueda-input');
+  if (input) {
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); ejecutarBusqueda(); }
+    });
+  }
+});
+</script>
 {% endblock %}

@@ -34,6 +34,17 @@ Lista de estudios del investigador
 {% endfor %}
 {% endif %}
 <div class="table-container">
+
+    <!-- Buscador global (server-side) -->
+    <div style="margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
+        <label for="busqueda-input" style="font-weight: 500; color: #333;">Buscar:</label>
+        <input type="text" id="busqueda-input" value="{{ busqueda|default:'' }}" placeholder="Escribe para buscar en todos los estudios..." style="padding: 8px 12px; border: 1px solid #dfe3e6; border-radius: 6px; font-size: 14px; width: 300px;">
+        <button type="button" onclick="ejecutarBusqueda()" class="btn btn-secondary" style="padding: 8px 14px;">🔍 Buscar</button>
+        {% if busqueda %}
+            <button type="button" onclick="limpiarBusqueda()" class="btn btn-secondary" style="padding: 8px 14px;">✖ Limpiar búsqueda</button>
+        {% endif %}
+    </div>
+
     <table class="styled-table">
         <thead>
             <tr>
@@ -100,24 +111,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const thead = table.querySelector('thead');
     const tbody = table.querySelector('tbody');
     const rows = Array.from(tbody.querySelectorAll('tr'));
-    
-    // Crear contenedor para el buscador
-    const searchContainer = document.createElement('div');
-    searchContainer.style.cssText = 'margin-bottom: 15px; display: flex; align-items: center; gap: 10px;';
-    searchContainer.innerHTML = '<label style="font-weight: 500; color: #333;">Buscar:</label><input type="text" id="table-search" placeholder="Escribe para buscar..." style="padding: 8px 12px; border: 1px solid #dfe3e6; border-radius: 6px; font-size: 14px; width: 250px;">';
-    
-    table.parentNode.insertBefore(searchContainer, table);
-    
-    const searchInput = document.getElementById('table-search');
-    
-    // Función de búsqueda
-    searchInput.addEventListener('keyup', function() {
-        const filter = this.value.toLowerCase();
-        rows.forEach(row => {
-            const text = row.textContent.toLowerCase();
-            row.style.display = text.includes(filter) ? '' : 'none';
-        });
-    });
     
     // Función de ordenamiento
     const headers = thead.querySelectorAll('th');
@@ -190,6 +183,7 @@ document.addEventListener('DOMContentLoaded', function() {
         <option value="25" {% if items_por_pagina == 25 %}selected{% endif %}>25</option>
         <option value="50" {% if items_por_pagina == 50 %}selected{% endif %}>50</option>
         <option value="100" {% if items_por_pagina == 100 %}selected{% endif %}>100</option>
+        <option value="todas" {% if items_por_pagina == 'todas' %}selected{% endif %}>Todas</option>
       </select>
     </form>
   </div>
@@ -239,4 +233,32 @@ document.addEventListener('DOMContentLoaded', function() {
     {% endif %}
   </div>
 </div>
+
+<script>
+function ejecutarBusqueda() {
+  var texto = document.getElementById('busqueda-input').value.trim();
+  var params = new URLSearchParams(window.location.search);
+  if (texto) {
+    params.set('busqueda', texto);
+  } else {
+    params.delete('busqueda');
+  }
+  params.delete('page');
+  window.location.href = window.location.pathname + '?' + params.toString();
+}
+function limpiarBusqueda() {
+  var params = new URLSearchParams(window.location.search);
+  params.delete('busqueda');
+  params.delete('page');
+  window.location.href = window.location.pathname + '?' + params.toString();
+}
+document.addEventListener('DOMContentLoaded', function() {
+  var input = document.getElementById('busqueda-input');
+  if (input) {
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); ejecutarBusqueda(); }
+    });
+  }
+});
+</script>
 {%endblock%}

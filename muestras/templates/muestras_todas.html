@@ -33,6 +33,91 @@ Lista de Muestras
     gap: 10px;
     align-items: center;
   }
+
+  /* Estilos para multiselect dropdown */
+  .multiselect-wrapper {
+    position: relative;
+    width: 100%;
+  }
+  .multiselect-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 14px;
+    min-height: 34px;
+    user-select: none;
+  }
+  .multiselect-toggle:hover {
+    border-color: #999;
+  }
+  .multiselect-toggle .arrow {
+    margin-left: 8px;
+    font-size: 10px;
+  }
+  .multiselect-dropdown {
+    display: none;
+    position: absolute;
+    z-index: 1000;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    max-height: 220px;
+    overflow-y: auto;
+    width: 100%;
+    min-width: 180px;
+  }
+  .multiselect-wrapper.open .multiselect-dropdown {
+    display: block;
+  }
+  .multiselect-dropdown label {
+    display: flex;
+    align-items: center;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 13px;
+    gap: 6px;
+  }
+  .multiselect-dropdown label:hover {
+    background: #f0f4ff;
+  }
+  .multiselect-dropdown input[type="checkbox"] {
+    margin: 0;
+  }
+  .multiselect-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    flex: 1;
+  }
+  .multiselect-tag {
+    background: #e0e7ff;
+    color: #1a3d7c;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .multiselect-tag-remove {
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 14px;
+    line-height: 1;
+    color: #1a3d7c;
+  }
+  .multiselect-tag-remove:hover {
+    color: #c00;
+  }
+  .multiselect-placeholder {
+    color: #999;
+  }
 </style>
 
 
@@ -55,31 +140,29 @@ Lista de Muestras
             </div>
             <div class="filter-field">
                 <label>Material</label>
-                <select name="id_material" form="filter-form">
-                  <option value=""></option>
-                  <option value="null">Sin asignar</option>
-                  {% for material in opciones_materiales %}
-                    <option value="{{ material }}">{{ material }}</option>
-                  {% endfor %}
-                </select>
-            </div>
-            <div class="filter-field">
-                <label>Material</label>
-                <input type="text" name="id_material_texto">
-            </div>
-            <div class="filter-field">
-                <label>Estudio</label>
-                <select name="estudio" form="filter-form">
-                  <option value=""></option>
-                  <option value="null">Sin estudio asignado</option>
-                  {% for estudio in opciones_estudios %}
-                    <option value="{{ estudio.id }}">{{ estudio.nombre_estudio }}</option>
-                  {% endfor %}
-                </select>
+                <div class="multiselect-wrapper" data-name="id_material">
+                  <input type="hidden" name="id_material" value="">
+                  <div class="multiselect-toggle"><span class="multiselect-tags"><span class="multiselect-placeholder">Seleccionar...</span></span><span class="arrow">▼</span></div>
+                  <div class="multiselect-dropdown">
+                    <label><input type="checkbox" value="null"> Sin asignar</label>
+                    {% for material in opciones_materiales %}
+                      <label><input type="checkbox" value="{{ material }}"> {{ material }}</label>
+                    {% endfor %}
+                  </div>
+                </div>
             </div>
             <div class="filter-field">
                 <label>Estudio</label>
-                <input type="text" name="estudio_texto">
+                <div class="multiselect-wrapper" data-name="estudio">
+                  <input type="hidden" name="estudio" value="">
+                  <div class="multiselect-toggle"><span class="multiselect-tags"><span class="multiselect-placeholder">Seleccionar...</span></span><span class="arrow">▼</span></div>
+                  <div class="multiselect-dropdown">
+                    <label><input type="checkbox" value="null"> Sin estudio asignado</label>
+                    {% for estudio in opciones_estudios %}
+                      <label><input type="checkbox" value="{{ estudio.id }}"> {{ estudio.nombre_estudio }}</label>
+                    {% endfor %}
+                  </div>
+                </div>
             </div>
 
             <div class="filter-row"></div>
@@ -130,47 +213,44 @@ Lista de Muestras
                 <input type="text" name="estado_inicial">
             </div>
             <div class="filter-field">
-                <label>Centro de procedencia</label>
-                <select name="centro_procedencia" form="filter-form">
-                  <option value=""></option>
-                  <option value="null">Sin asignar</option>
-                  {% for centro in opciones_centros %}
-                    <option value="{{ centro }}">{{ centro }}</option>
-                  {% endfor %}
-                </select>
+                <label>Centro procedencia</label>
+                <div class="multiselect-wrapper" data-name="centro_procedencia">
+                  <input type="hidden" name="centro_procedencia" value="">
+                  <div class="multiselect-toggle"><span class="multiselect-tags"><span class="multiselect-placeholder">Seleccionar...</span></span><span class="arrow">▼</span></div>
+                  <div class="multiselect-dropdown">
+                    <label><input type="checkbox" value="null"> Sin asignar</label>
+                    {% for centro in opciones_centros %}
+                      <label><input type="checkbox" value="{{ centro }}"> {{ centro }}</label>
+                    {% endfor %}
+                  </div>
+                </div>
             </div>
             <div class="filter-field">
-                <label>Centro de procedencia</label>
-                <input type="text" name="centro_procedencia_texto">
-            </div>
-            <div class="filter-field">
-                <label>Lugar de procedencia</label>
-                <select name="lugar_procedencia" form="filter-form">
-                  <option value=""></option>
-                  <option value="null">Sin asignar</option>
-                  {% for lugar in opciones_lugares %}
-                    <option value="{{ lugar }}">{{ lugar }}</option>
-                  {% endfor %}
-                </select>
-            </div>
-            <div class="filter-field">
-                <label>Lugar de procedencia</label>
-                <input type="text" name="lugar_procedencia_texto">
-            </div>
-            <div class="filter-field">
-                <label>Estado actual</label>
-                <select name="estado_actual" form="filter-form">
-                  <option value=""></option>
-                  <option value="null">Sin asignar</option>
-                  <option value="DISP">Disponible</option>
-                  <option value="PENV">Parcialmente enviada</option>
-                  <option value="ENV">Enviada</option>
-                  <option value="DEST">Destruida</option>
-                </select>
+                <label>Lugar procedencia</label>
+                <div class="multiselect-wrapper" data-name="lugar_procedencia">
+                  <input type="hidden" name="lugar_procedencia" value="">
+                  <div class="multiselect-toggle"><span class="multiselect-tags"><span class="multiselect-placeholder">Seleccionar...</span></span><span class="arrow">▼</span></div>
+                  <div class="multiselect-dropdown">
+                    <label><input type="checkbox" value="null"> Sin asignar</label>
+                    {% for lugar in opciones_lugares %}
+                      <label><input type="checkbox" value="{{ lugar }}"> {{ lugar }}</label>
+                    {% endfor %}
+                  </div>
+                </div>
             </div>
             <div class="filter-field">
                 <label>Estado actual</label>
-                <input type="text" name="estado_actual_texto">
+                <div class="multiselect-wrapper" data-name="estado_actual">
+                  <input type="hidden" name="estado_actual" value="">
+                  <div class="multiselect-toggle"><span class="multiselect-tags"><span class="multiselect-placeholder">Seleccionar...</span></span><span class="arrow">▼</span></div>
+                  <div class="multiselect-dropdown">
+                    <label><input type="checkbox" value="null"> Sin asignar</label>
+                    <label><input type="checkbox" value="DISP"> Disponible</label>
+                    <label><input type="checkbox" value="PENV"> Parcialmente enviada</label>
+                    <label><input type="checkbox" value="ENV"> Enviada</label>
+                    <label><input type="checkbox" value="DEST"> Destruida</label>
+                  </div>
+                </div>
             </div>
 
             <div class="filter-row"></div>
@@ -178,43 +258,55 @@ Lista de Muestras
             <!-- GRUPO 5: Localización -->
             <div class="filter-field">
                 <label>Congelador</label>
-                <select name="congelador" form="filter-form">
-                  <option value=""></option>
-                  <option value="null">Sin asignar</option>
-                  {% for congelador in opciones_congeladores %}
-                    <option value="{{ congelador }}">{{ congelador }}</option>
-                  {% endfor %}
-                </select>
+                <div class="multiselect-wrapper" data-name="congelador">
+                  <input type="hidden" name="congelador" value="">
+                  <div class="multiselect-toggle"><span class="multiselect-tags"><span class="multiselect-placeholder">Seleccionar...</span></span><span class="arrow">▼</span></div>
+                  <div class="multiselect-dropdown">
+                    <label><input type="checkbox" value="null"> Sin asignar</label>
+                    {% for congelador in opciones_congeladores %}
+                      <label><input type="checkbox" value="{{ congelador }}"> {{ congelador }}</label>
+                    {% endfor %}
+                  </div>
+                </div>
             </div>
             <div class="filter-field">
                 <label>Estante</label>
-                <select name="estante" form="filter-form">
-                  <option value=""></option>
-                  <option value="null">Sin asignar</option>
-                  {% for estante in opciones_estantes %}
-                    <option value="{{ estante }}">{{ estante }}</option>
-                  {% endfor %}
-                </select>
+                <div class="multiselect-wrapper" data-name="estante">
+                  <input type="hidden" name="estante" value="">
+                  <div class="multiselect-toggle"><span class="multiselect-tags"><span class="multiselect-placeholder">Seleccionar...</span></span><span class="arrow">▼</span></div>
+                  <div class="multiselect-dropdown">
+                    <label><input type="checkbox" value="null"> Sin asignar</label>
+                    {% for estante in opciones_estantes %}
+                      <label><input type="checkbox" value="{{ estante }}"> {{ estante }}</label>
+                    {% endfor %}
+                  </div>
+                </div>
             </div>
             <div class="filter-field">
                 <label>Rack</label>
-                <select name="rack" form="filter-form">
-                  <option value=""></option>
-                  <option value="null">Sin asignar</option>
-                  {% for rack in opciones_racks %}
-                    <option value="{{ rack }}">{{ rack }}</option>
-                  {% endfor %}
-                </select>
+                <div class="multiselect-wrapper" data-name="rack">
+                  <input type="hidden" name="rack" value="">
+                  <div class="multiselect-toggle"><span class="multiselect-tags"><span class="multiselect-placeholder">Seleccionar...</span></span><span class="arrow">▼</span></div>
+                  <div class="multiselect-dropdown">
+                    <label><input type="checkbox" value="null"> Sin asignar</label>
+                    {% for rack in opciones_racks %}
+                      <label><input type="checkbox" value="{{ rack }}"> {{ rack }}</label>
+                    {% endfor %}
+                  </div>
+                </div>
             </div>
             <div class="filter-field">
                 <label>Caja</label>
-                <select name="caja" form="filter-form">
-                  <option value=""></option>
-                  <option value="null">Sin asignar</option>
-                  {% for caja in opciones_cajas %}
-                    <option value="{{ caja }}">{{ caja }}</option>
-                  {% endfor %}
-                </select>
+                <div class="multiselect-wrapper" data-name="caja">
+                  <input type="hidden" name="caja" value="">
+                  <div class="multiselect-toggle"><span class="multiselect-tags"><span class="multiselect-placeholder">Seleccionar...</span></span><span class="arrow">▼</span></div>
+                  <div class="multiselect-dropdown">
+                    <label><input type="checkbox" value="null"> Sin asignar</label>
+                    {% for caja in opciones_cajas %}
+                      <label><input type="checkbox" value="{{ caja }}"> {{ caja }}</label>
+                    {% endfor %}
+                  </div>
+                </div>
             </div>
 
             <div class="filter-row"></div>
@@ -289,6 +381,13 @@ Lista de Muestras
     <input type="button" value="☑️ Seleccionar todo" onclick="seleccionar_todo(true)" class="btn btn-secondary">
     <input type="button" value="☐ Deseleccionar" onclick="seleccionar_todo(false)" class="btn btn-secondary">
     </div>
+
+    <!-- Banner para selección global -->
+    <div id="seleccion-global-banner" style="display:none; width:100%; padding: 10px 15px; background: #d1ecf1; border: 1px solid #bee5eb; border-radius: 6px; color: #0c5460; font-size: 14px;">
+      <span id="banner-texto">Has seleccionado <strong id="seleccion-pagina-count"></strong> muestras de esta página.</span>
+      <a href="#" id="seleccionar-todas-global" style="font-weight: 600; margin-left: 8px;">Seleccionar las {{ contador_muestras }} muestras que coinciden con la búsqueda</a>
+      <span id="banner-global-activo" style="display:none;">Se han seleccionado las <strong>{{ contador_muestras }}</strong> muestras. <a href="#" id="cancelar-seleccion-global" style="font-weight: 600; margin-left: 8px;">Cancelar</a></span>
+    </div>
  </div>
  
 </div>
@@ -316,6 +415,17 @@ Lista de Muestras
 
 
 <div class="table-container">
+
+  <!-- Buscador global (server-side, sin form anidado) -->
+  <div style="margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
+      <label for="busqueda-input" style="font-weight: 500; color: #333;">Buscar:</label>
+      <input type="text" id="busqueda-input" value="{{ busqueda|default:'' }}" placeholder="Escribe para buscar en todas las muestras..." style="padding: 8px 12px; border: 1px solid #dfe3e6; border-radius: 6px; font-size: 14px; width: 300px;">
+      <button type="button" onclick="ejecutarBusqueda()" class="btn btn-secondary" style="padding: 8px 14px;">🔍 Buscar</button>
+      {% if busqueda %}
+        <button type="button" onclick="limpiarBusqueda()" class="btn btn-secondary" style="padding: 8px 14px;">✖ Limpiar búsqueda</button>
+      {% endif %}
+  </div>
+
   <table class="styled-table">
     <thead>
       <tr>
@@ -328,12 +438,12 @@ Lista de Muestras
         <th >Volumen</th>
         <th >Concentración</th>
         <th >Masa</th>
-        <th>Fecha de extracción</th>
-        <th>Fecha de llegada</th>
+        <th>Fecha extracción</th>
+        <th>Fecha llegada</th>
         <th class="wrap-text">Observaciones</th>
         <th>Estado inicial</th>
-        <th class="wrap-text">Centro de procedencia</th>
-        <th class="wrap-text">Lugar de procedencia</th>
+        <th class="wrap-text">Centro procedencia</th>
+        <th class="wrap-text">Lugar procedencia</th>
         <th class="wrap-text">Estado actual</th>
         <th>Estudio</th>
         <th class="wrap-text">Historial estudios</th>
@@ -427,7 +537,7 @@ Lista de Muestras
     <td class="wrap-text">{%if x.envio.all%}
       <a href="{% url 'historial_envios' x.id %}">Ver envios</a>
       {%else%}
-      Sin envios registrados
+      -
       {% endif %}
     </td>
     </tr>
@@ -452,6 +562,7 @@ Lista de Muestras
         <option value="25" {% if items_por_pagina == 25 %}selected{% endif %}>25</option>
         <option value="50" {% if items_por_pagina == 50 %}selected{% endif %}>50</option>
         <option value="100" {% if items_por_pagina == 100 %}selected{% endif %}>100</option>
+        <option value="todas" {% if items_por_pagina == 'todas' %}selected{% endif %}>Todas</option>
       </select>
     </form>
   </div>
@@ -503,20 +614,189 @@ Lista de Muestras
 </div>
 
     <script language="JavaScript">
+      // IDs de todas las muestras filtradas (para selección global)
+      var todasMuestrasIds = {{ muestras_ids_json|safe }};
+      var seleccionGlobalActiva = false;
+
       function seleccionar_todo(valor) {
         checkboxes = document.getElementsByTagName('input');
         for (var i=0; i<checkboxes.length; i++) {
           if (checkboxes[i].type == 'checkbox' && checkboxes[i].name == 'muestra_id')
             checkboxes[i].checked = valor;
         }
+        if (!valor) {
+          cancelarSeleccionGlobal();
+        } else {
+          var checkboxesVisibles = document.querySelectorAll('input[type="checkbox"][name="muestra_id"]');
+          if (todasMuestrasIds.length > checkboxesVisibles.length) {
+            document.getElementById('seleccion-global-banner').style.display = 'block';
+            document.getElementById('seleccion-pagina-count').textContent = checkboxesVisibles.length;
+            document.getElementById('banner-texto').style.display = '';
+            document.getElementById('seleccionar-todas-global').style.display = '';
+            document.getElementById('banner-global-activo').style.display = 'none';
+          }
+        }
         actualizarEstadoBotones();
       }
+
+      function activarSeleccionGlobal() {
+        seleccionGlobalActiva = true;
+        var form = document.getElementById('acciones-form');
+        var idsVisibles = new Set();
+        document.querySelectorAll('input[type="checkbox"][name="muestra_id"]').forEach(function(cb) {
+          idsVisibles.add(parseInt(cb.value));
+          cb.checked = true;
+        });
+        todasMuestrasIds.forEach(function(id) {
+          if (!idsVisibles.has(id)) {
+            var hidden = document.createElement('input');
+            hidden.type = 'hidden';
+            hidden.name = 'muestra_id';
+            hidden.value = id;
+            hidden.classList.add('global-hidden-muestra');
+            form.appendChild(hidden);
+          }
+        });
+        document.getElementById('banner-texto').style.display = 'none';
+        document.getElementById('seleccionar-todas-global').style.display = 'none';
+        document.getElementById('banner-global-activo').style.display = '';
+        actualizarEstadoBotones();
+      }
+
+      function cancelarSeleccionGlobal() {
+        seleccionGlobalActiva = false;
+        document.querySelectorAll('.global-hidden-muestra').forEach(function(el) {
+          el.remove();
+        });
+        document.getElementById('seleccion-global-banner').style.display = 'none';
+      }
+
+      document.addEventListener('DOMContentLoaded', function() {
+        var btnGlobal = document.getElementById('seleccionar-todas-global');
+        if (btnGlobal) {
+          btnGlobal.addEventListener('click', function(e) {
+            e.preventDefault();
+            activarSeleccionGlobal();
+          });
+        }
+        var btnCancelar = document.getElementById('cancelar-seleccion-global');
+        if (btnCancelar) {
+          btnCancelar.addEventListener('click', function(e) {
+            e.preventDefault();
+            cancelarSeleccionGlobal();
+            seleccionar_todo(false);
+          });
+        }
+      });
     </script>
+
+<script>
+// ───── MULTISELECT DROPDOWNS ─────
+document.addEventListener('DOMContentLoaded', function() {
+  var params = new URLSearchParams(window.location.search);
+
+  // Restaurar valores de inputs de texto y fecha
+  var filterForm = document.getElementById('filter-form');
+  if (filterForm) {
+    filterForm.querySelectorAll('input[type="text"], input[type="date"]').forEach(function(input) {
+      var val = params.get(input.name);
+      if (val) input.value = val;
+    });
+  }
+
+  document.querySelectorAll('.multiselect-wrapper').forEach(function(wrapper) {
+    var name = wrapper.getAttribute('data-name');
+    var toggle = wrapper.querySelector('.multiselect-toggle');
+    var dropdown = wrapper.querySelector('.multiselect-dropdown');
+    var hiddenInput = wrapper.querySelector('input[type="hidden"]');
+    var tagsContainer = wrapper.querySelector('.multiselect-tags');
+    var checkboxes = dropdown.querySelectorAll('input[type="checkbox"]');
+
+    // Restaurar valores desde URL
+    var currentVal = params.get(name) || '';
+    if (currentVal) {
+      var vals = currentVal.split(';');
+      checkboxes.forEach(function(cb) {
+        if (vals.indexOf(cb.value) !== -1) cb.checked = true;
+      });
+      hiddenInput.value = currentVal;
+    }
+
+    function renderTags() {
+      var selected = [];
+      checkboxes.forEach(function(cb) {
+        if (cb.checked) selected.push({ value: cb.value, label: cb.parentElement.textContent.trim() });
+      });
+      tagsContainer.innerHTML = '';
+      if (selected.length === 0) {
+        tagsContainer.innerHTML = '<span class="multiselect-placeholder">Seleccionar...</span>';
+      } else {
+        selected.forEach(function(item) {
+          var tag = document.createElement('span');
+          tag.className = 'multiselect-tag';
+          tag.textContent = item.label;
+          var removeBtn = document.createElement('span');
+          removeBtn.className = 'multiselect-tag-remove';
+          removeBtn.textContent = '×';
+          removeBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            checkboxes.forEach(function(cb) {
+              if (cb.value === item.value) cb.checked = false;
+            });
+            updateValue();
+          });
+          tag.appendChild(removeBtn);
+          tagsContainer.appendChild(tag);
+        });
+      }
+    }
+
+    function updateValue() {
+      var vals = [];
+      checkboxes.forEach(function(cb) {
+        if (cb.checked) vals.push(cb.value);
+      });
+      hiddenInput.value = vals.join(';');
+      renderTags();
+    }
+
+    // Toggle dropdown
+    toggle.addEventListener('click', function(e) {
+      e.stopPropagation();
+      // Close all other dropdowns
+      document.querySelectorAll('.multiselect-wrapper.open').forEach(function(other) {
+        if (other !== wrapper) other.classList.remove('open');
+      });
+      wrapper.classList.toggle('open');
+    });
+
+    // Checkbox change
+    checkboxes.forEach(function(cb) {
+      cb.addEventListener('change', function() {
+        updateValue();
+      });
+    });
+
+    // Render initial state
+    renderTags();
+  });
+
+  // Close dropdowns on outside click
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('.multiselect-wrapper')) {
+      document.querySelectorAll('.multiselect-wrapper.open').forEach(function(w) {
+        w.classList.remove('open');
+      });
+    }
+  });
+});
+</script>
 
 <script>
 function validarSeleccion(botonName, mensaje) {
   const checkboxes = document.querySelectorAll('input[type="checkbox"][name="muestra_id"]');
-  const haySeleccionados = Array.from(checkboxes).some(cb => cb.checked);
+  const hiddenGlobales = document.querySelectorAll('.global-hidden-muestra');
+  const haySeleccionados = Array.from(checkboxes).some(cb => cb.checked) || hiddenGlobales.length > 0;
   
   if (!haySeleccionados) {
     alert('Por favor selecciona al menos una muestra');
@@ -530,11 +810,45 @@ function validarSeleccion(botonName, mensaje) {
   return false;
 }
 
+// Funciones de búsqueda global (sin form anidado)
+function ejecutarBusqueda() {
+  var texto = document.getElementById('busqueda-input').value.trim();
+  var params = new URLSearchParams(window.location.search);
+  if (texto) {
+    params.set('busqueda', texto);
+  } else {
+    params.delete('busqueda');
+  }
+  params.delete('page'); // volver a página 1 al buscar
+  window.location.href = window.location.pathname + '?' + params.toString();
+}
+
+function limpiarBusqueda() {
+  var params = new URLSearchParams(window.location.search);
+  params.delete('busqueda');
+  params.delete('page');
+  window.location.href = window.location.pathname + '?' + params.toString();
+}
+
+// Permitir buscar con Enter
+document.addEventListener('DOMContentLoaded', function() {
+  var input = document.getElementById('busqueda-input');
+  if (input) {
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        ejecutarBusqueda();
+      }
+    });
+  }
+});
+
 function actualizarEstadoBotones() {
   const checkboxes = document.querySelectorAll('input[type="checkbox"][name="muestra_id"]');
+  const hiddenGlobales = document.querySelectorAll('.global-hidden-muestra');
   const botonesADesactivar = ['eliminar-btn', 'estudio-btn', 'destruir-btn'];
   
-  const haySeleccionados = Array.from(checkboxes).some(cb => cb.checked);
+  const haySeleccionados = Array.from(checkboxes).some(cb => cb.checked) || hiddenGlobales.length > 0;
   console.log('Checkboxes encontrados:', checkboxes.length);
   console.log('Hay seleccionados:', haySeleccionados);
   
@@ -570,6 +884,24 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     });
 
+    // Auto-abrir filtros si hay filtros activos en la URL
+    var filterParams = new URLSearchParams(window.location.search);
+    var filterKeys = ['id_individuo','nom_lab','id_material','estudio',
+      'volumen_actual','unidad_volumen','concentracion_actual','unidad_concentracion','masa_actual','unidad_masa',
+      'fecha_extraccion','fecha_llegada','estado_inicial','centro_procedencia',
+      'lugar_procedencia','estado_actual',
+      'congelador','estante','rack','caja','observaciones'];
+    var hayFiltros = filterKeys.some(function(k) { return filterParams.get(k); });
+    if (hayFiltros) {
+      var filtroHeader = document.querySelector('.collapsible-header');
+      if (filtroHeader) {
+        filtroHeader.classList.add('active');
+        var filtroContent = filtroHeader.nextElementSibling;
+        filtroContent.style.maxHeight = filtroContent.scrollHeight + 'px';
+        filtroContent.classList.add('open');
+      }
+    }
+
     setTimeout(function() {
       actualizarEstadoBotones();
       console.log('Inicialización completada');
@@ -582,7 +914,7 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 </script>
 
-<!-- Búsqueda y Ordenamiento Personalizado -->
+<!-- Ordenamiento Personalizado -->
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const table = document.querySelector('.styled-table');
@@ -591,24 +923,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const thead = table.querySelector('thead');
     const tbody = table.querySelector('tbody');
     const rows = Array.from(tbody.querySelectorAll('tr'));
-    
-    // Crear contenedor para el buscador
-    const searchContainer = document.createElement('div');
-    searchContainer.style.cssText = 'margin-bottom: 15px; display: flex; align-items: center; gap: 10px;';
-    searchContainer.innerHTML = '<label style="font-weight: 500; color: #333;">Buscar:</label><input type="text" id="table-search" placeholder="Escribe para buscar..." style="padding: 8px 12px; border: 1px solid #dfe3e6; border-radius: 6px; font-size: 14px; width: 250px;">';
-    
-    table.parentNode.insertBefore(searchContainer, table);
-    
-    const searchInput = document.getElementById('table-search');
-    
-    // Función de búsqueda
-    searchInput.addEventListener('keyup', function() {
-        const filter = this.value.toLowerCase();
-        rows.forEach(row => {
-            const text = row.textContent.toLowerCase();
-            row.style.display = text.includes(filter) ? '' : 'none';
-        });
-    });
     
     // Función de ordenamiento
     const headers = thead.querySelectorAll('th');

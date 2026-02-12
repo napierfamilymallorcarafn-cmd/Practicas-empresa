@@ -388,7 +388,21 @@ def muestras_todas(request):
     if request.user.groups.filter(name='Investigadores'):
         muestras = Muestra.objects.filter(Q(estudio__investigadores_asociados__username=request.user))
     
-    
+    # Búsqueda general (server-side): filtra en todos los campos de texto relevantes
+    busqueda_general = request.GET.get('busqueda', '').strip()
+    if busqueda_general:
+        q_busqueda = Q()
+        q_busqueda |= Q(id_individuo__icontains=busqueda_general)
+        q_busqueda |= Q(nom_lab__icontains=busqueda_general)
+        q_busqueda |= Q(id_material__icontains=busqueda_general)
+        q_busqueda |= Q(observaciones__icontains=busqueda_general)
+        q_busqueda |= Q(estado_inicial__icontains=busqueda_general)
+        q_busqueda |= Q(centro_procedencia__icontains=busqueda_general)
+        q_busqueda |= Q(lugar_procedencia__icontains=busqueda_general)
+        q_busqueda |= Q(estado_actual__icontains=busqueda_general)
+        q_busqueda |= Q(estudio__nombre_estudio__icontains=busqueda_general)
+        muestras = muestras.filter(q_busqueda)
+
     '''
     # Crear un PDF con las muestras filtradas
     if request.GET.get('crear_pdf'):    
@@ -464,14 +478,17 @@ def muestras_todas(request):
     # Paginación
     contador_total = muestras.count()
     items_por_pagina = request.GET.get('items_por_pagina', 25)
-    try:
-        items_por_pagina = int(items_por_pagina)
-        if items_por_pagina not in [10, 25, 50, 100]:
+    if str(items_por_pagina) == 'todas':
+        items_por_pagina = 'todas'
+        paginator = Paginator(muestras, max(contador_total, 1))
+    else:
+        try:
+            items_por_pagina = int(items_por_pagina)
+            if items_por_pagina not in [10, 25, 50, 100]:
+                items_por_pagina = 25
+        except (ValueError, TypeError):
             items_por_pagina = 25
-    except (ValueError, TypeError):
-        items_por_pagina = 25
-    
-    paginator = Paginator(muestras, items_por_pagina)
+        paginator = Paginator(muestras, items_por_pagina)
     numero_pagina = request.GET.get('page', 1)
     
     try:
@@ -499,6 +516,8 @@ def muestras_todas(request):
         'muestras_page': muestras_pagina,
         'paginator': paginator,
         'items_por_pagina': items_por_pagina,
+        'busqueda': busqueda_general,
+        'muestras_ids_json': json.dumps(list(muestras.values_list('id', flat=True))),
     }
     return HttpResponse(template.render(context, request))
 @login_required
@@ -2440,17 +2459,30 @@ def estudios_todos(request):
     else:
         queryset = Estudio.objects.all().annotate(num_muestras=Count('muestra'))
 
+    # Búsqueda general (server-side)
+    busqueda_general = request.GET.get('busqueda', '').strip()
+    if busqueda_general:
+        q_busqueda = Q()
+        q_busqueda |= Q(referencia_estudio__icontains=busqueda_general)
+        q_busqueda |= Q(nombre_estudio__icontains=busqueda_general)
+        q_busqueda |= Q(descripcion_estudio__icontains=busqueda_general)
+        q_busqueda |= Q(investigador_principal__icontains=busqueda_general)
+        queryset = queryset.filter(q_busqueda)
+
     # Paginación
     contador_total = queryset.count()
     items_por_pagina = request.GET.get('items_por_pagina', 25)
-    try:
-        items_por_pagina = int(items_por_pagina)
-        if items_por_pagina not in [10, 25, 50, 100]:
+    if str(items_por_pagina) == 'todas':
+        items_por_pagina = 'todas'
+        paginator = Paginator(queryset, max(contador_total, 1))
+    else:
+        try:
+            items_por_pagina = int(items_por_pagina)
+            if items_por_pagina not in [10, 25, 50, 100]:
+                items_por_pagina = 25
+        except Exception:
             items_por_pagina = 25
-    except Exception:
-        items_por_pagina = 25
-
-    paginator = Paginator(queryset, items_por_pagina)
+        paginator = Paginator(queryset, items_por_pagina)
     numero_pagina = request.GET.get('page', 1)
     try:
         estudios_page = paginator.page(numero_pagina)
@@ -2466,6 +2498,7 @@ def estudios_todos(request):
         'muestras_page': estudios_page,  # mantiene compatibilidad con la plantilla existente
         'contador_muestras': contador_total,
         'items_por_pagina': items_por_pagina,
+        'busqueda': busqueda_general,
         'request': request,
     }
     return HttpResponse(template.render(context, request))
@@ -3049,20 +3082,33 @@ def repositorio_estudio(request, id_estudio):
             for cat in categorias_list:
                 q_filters |= Q(categoria__icontains=cat)
             documentos = documentos.filter(q_filters)
+    # Búsqueda general de documentos (server-side)
+    busqueda_general = request.GET.get('busqueda', '').strip()
+    if busqueda_general:
+        q_busqueda = Q()
+        q_busqueda |= Q(categoria__icontains=busqueda_general)
+        q_busqueda |= Q(descripcion__icontains=busqueda_general)
+        q_busqueda |= Q(usuario_subida__username__icontains=busqueda_general)
+        q_busqueda |= Q(archivo__icontains=busqueda_general)
+        documentos = documentos.filter(q_busqueda)
+
     for doc in documentos:    
         if request.GET.get(f'{doc.id}'):
             eliminar_documento(request, doc.id)
     # Paginación de documentos
     contador_total = documentos.count()
     items_por_pagina = request.GET.get('items_por_pagina', 25)
-    try:
-        items_por_pagina = int(items_por_pagina)
-        if items_por_pagina not in [10, 25, 50, 100]:
+    if str(items_por_pagina) == 'todas':
+        items_por_pagina = 'todas'
+        paginator = Paginator(documentos, max(contador_total, 1))
+    else:
+        try:
+            items_por_pagina = int(items_por_pagina)
+            if items_por_pagina not in [10, 25, 50, 100]:
+                items_por_pagina = 25
+        except Exception:
             items_por_pagina = 25
-    except Exception:
-        items_por_pagina = 25
-
-    paginator = Paginator(documentos, items_por_pagina)
+        paginator = Paginator(documentos, items_por_pagina)
     numero_pagina = request.GET.get('page', 1)
     try:
         documentos_page = paginator.page(numero_pagina)
@@ -3078,6 +3124,7 @@ def repositorio_estudio(request, id_estudio):
         'muestras_page': documentos_page,  # mantiene compatibilidad con la plantilla existente
         'contador_muestras': contador_total,
         'items_por_pagina': items_por_pagina,
+        'busqueda': busqueda_general,
         'id': estudio.id,
         'estudio': estudio,
         'usuarios': usuarios,
