@@ -37,7 +37,7 @@
           <p> Usuario: {{ user.username }} </p>
           <form action="{% url 'logout' %}" method="post">
           {% csrf_token %} 
-          <button type="submit">Logout</button>
+          <button type="submit">Cerrar sesión ({{ user.username }})</button>
           </form>
           {%else%}
           <a href="{% url 'login' %}"> Iniciar sesión </a>
