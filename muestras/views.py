@@ -574,7 +574,39 @@ def acciones_post(request):
                 messages.success(request, f'{numero_muestras_destruidas} muestras destruidas correctamente. ')
         elif 'cambio_posicion' in request.POST:
             # Se redirigue al usuario a la vista de cambio de posición de muestras
-            return redirect('cambio_posicion')             
+            return redirect('cambio_posicion')
+        elif 'exportar_seleccionadas' in request.POST:
+            # Exportar a Excel solo las muestras seleccionadas
+            if muestras_seleccionadas:
+                field_names = [f.name for f in Muestra._meta.local_fields if f.name not in ('id','estudio')]
+                muestras_export = Muestra.objects.filter(id__in=muestras_seleccionadas)
+                response = HttpResponse(content_type='application/ms-excel')
+                response['Content-Disposition'] = 'attachment; filename="muestras_seleccionadas.xlsx"'
+                wb = openpyxl.load_workbook(os.path.join(settings.BASE_DIR, 'datos_prueba', 'globalstaticfiles', 'listado_muestras.xlsx'))
+                ws = wb.active
+                row_num = 2
+                for muestra in muestras_export:
+                    col_num = 1
+                    for field in field_names:
+                        value = muestra.__dict__[field]
+                        if value is None:
+                            value = ''
+                        ws.cell(row_num, col_num).value = str(value)
+                        col_num += 1
+                    value = muestra.estudio.nombre_estudio if muestra.estudio else ''
+                    ws.cell(row_num, col_num).value = str(value)
+                    col_num += 1
+                    value = muestra.posicion_completa()
+                    if value is None:
+                        value = ''
+                    else:
+                        value = value.split("-")
+                        for columna in value:
+                            ws.cell(row_num, col_num).value = str(columna)
+                            col_num += 1
+                    row_num += 1
+                wb.save(response)
+                return response             
     return redirect('muestras_todas')    
 def detalles_muestra(request, nom_lab):
     # Vista que muestra los detalles de una muestra específica, requiere permiso para ver muestras

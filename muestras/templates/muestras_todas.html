@@ -366,6 +366,9 @@ Lista de Muestras
           📊⬇ Exportar Excel
         </button>
     </form>
+    <button type="button" id="exportar-seleccionadas-btn" class="btn btn-success" disabled onclick="exportarSeleccionadas()">
+      📊✅ Exportar seleccionadas
+    </button>
     </div>
 
     <div class="action-row">
@@ -400,6 +403,7 @@ Lista de Muestras
   <button type="submit" value="true" name="destruir" style="display:none;"></button>
   <button type="submit" value="true" name="envio" style="display:none;"></button>
   <button type="submit" value="true" name="cambio_posicion" style="display:none;"></button>
+  <button type="submit" value="true" name="exportar_seleccionadas" style="display:none;"></button>
 
 <!--
 <form action="" method="GET" style="display:inline;">
@@ -810,6 +814,10 @@ function validarSeleccion(botonName, mensaje) {
   return false;
 }
 
+function exportarSeleccionadas() {
+  document.getElementById('acciones-form').elements['exportar_seleccionadas'].click();
+}
+
 // Funciones de búsqueda global (sin form anidado)
 function ejecutarBusqueda() {
   var texto = document.getElementById('busqueda-input').value.trim();
@@ -846,7 +854,7 @@ document.addEventListener('DOMContentLoaded', function() {
 function actualizarEstadoBotones() {
   const checkboxes = document.querySelectorAll('input[type="checkbox"][name="muestra_id"]');
   const hiddenGlobales = document.querySelectorAll('.global-hidden-muestra');
-  const botonesADesactivar = ['eliminar-btn', 'estudio-btn', 'destruir-btn'];
+  const botonesADesactivar = ['eliminar-btn', 'estudio-btn', 'destruir-btn', 'exportar-seleccionadas-btn'];
   
   const haySeleccionados = Array.from(checkboxes).some(cb => cb.checked) || hiddenGlobales.length > 0;
   console.log('Checkboxes encontrados:', checkboxes.length);
