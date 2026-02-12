@@ -54,7 +54,7 @@ function desplegarCaja(button, cajaId) {
                         '</svg></span>' +
                         '<input type="checkbox" name="subposicion" value="' + sub.id + '" class="form-control" onchange="actualizarEstadoBotonEliminar()"> ' +
                         'Subposici\u00f3n ' + sub.numero + ': ' +
-                        '<a href="/muestras/detalles_muestra/' + sub.muestra_nom_lab + '">' + sub.muestra_nom_lab + '</a>';
+                        '<a href="/archivo/detalles_muestra/' + sub.muestra_nom_lab + '">' + sub.muestra_nom_lab + '</a>';
                 } else {
                     li.innerHTML =
                         '<input type="checkbox" name="subposicion" value="' + sub.id + '" class="form-control" onchange="actualizarEstadoBotonEliminar()"> ' +
