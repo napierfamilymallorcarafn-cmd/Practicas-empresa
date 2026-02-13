@@ -22,7 +22,17 @@ Archivo de muestras
     <button type="button"
         onclick="location.href='/archivo/nuevo'"
         class="accion-btn accion-primaria">
-    ➕ Añadir posiciones
+    📥 Importar posiciones
+    </button>
+
+    <button type="button" class="accion-btn accion-exportar"
+        onclick="location.href='{% url "exportar_congeladores" %}'">
+    📊⬇ Exportar
+    </button>
+
+    <button type="button" class="accion-btn accion-exportar" id="exportar_seleccionadas" disabled
+        onclick="exportarSeleccionadas()">
+    📊⬇ Exportar seleccionadas
     </button>
 
     <button type="button" class="accion-btn accion-exportar" id="exportar_libres" disabled
@@ -36,10 +46,37 @@ Archivo de muestras
     </button>
 
 </div>
+
+<!-- Seleccionar todo / Deseleccionar -->
+<div class="action-row" style="margin-bottom: 14px;">
+    <input type="button" value="☑️ Seleccionar todo" onclick="seleccionarTodo()" class="btn btn-secondary">
+    <input type="button" value="☐ Deseleccionar" onclick="deseleccionarTodo()" class="btn btn-secondary">
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
+  function obtenerTodosCheckboxes() {
+    return document.querySelectorAll('input[type="checkbox"][name="congelador"], input[type="checkbox"][name="estante"], input[type="checkbox"][name="rack"], input[type="checkbox"][name="caja"], input[type="checkbox"][name="subposicion"]');
+  }
+
+  function seleccionarTodo() {
+    obtenerTodosCheckboxes().forEach(cb => cb.checked = true);
+    actualizarEstadoBotones();
+  }
+
+  function deseleccionarTodo() {
+    obtenerTodosCheckboxes().forEach(cb => cb.checked = false);
+    actualizarEstadoBotones();
+  }
+
+  function actualizarEstadoBotones() {
+    actualizarEstadoBotonEliminar();
+    actualizarEstadoBotonExportar();
+    actualizarEstadoBotonExportarSeleccionadas();
+  }
+
   function actualizarEstadoBotonEliminar() {
-    const checkboxes = document.querySelectorAll('input[type="checkbox"][name="congelador"], input[type="checkbox"][name="estante"], input[type="checkbox"][name="rack"], input[type="checkbox"][name="caja"], input[type="checkbox"][name="subposicion"]');
+    const checkboxes = obtenerTodosCheckboxes();
     const botonEliminar = document.getElementById('eliminar');
     const haySeleccionados = Array.from(checkboxes).some(cb => cb.checked);
     botonEliminar.disabled = !haySeleccionados;
@@ -52,6 +89,13 @@ Archivo de muestras
     botonExportar.disabled = !hayCongeladorSeleccionado;
   }
 
+  function actualizarEstadoBotonExportarSeleccionadas() {
+    const checkboxesCongelador = document.querySelectorAll('input[type="checkbox"][name="congelador"]');
+    const botonExportarSel = document.getElementById('exportar_seleccionadas');
+    const hayCongeladorSeleccionado = Array.from(checkboxesCongelador).some(cb => cb.checked);
+    botonExportarSel.disabled = !hayCongeladorSeleccionado;
+  }
+
   function exportarPosicionesLibres() {
     const checkboxesCongelador = document.querySelectorAll('input[type="checkbox"][name="congelador"]:checked');
     const ids = Array.from(checkboxesCongelador).map(cb => cb.value);
@@ -60,14 +104,18 @@ Archivo de muestras
     window.location.href = '{% url "exportar_posiciones_libres" %}?' + params;
   }
 
+  function exportarSeleccionadas() {
+    const checkboxesCongelador = document.querySelectorAll('input[type="checkbox"][name="congelador"]:checked');
+    const ids = Array.from(checkboxesCongelador).map(cb => cb.value);
+    if (ids.length === 0) return;
+    const params = ids.map(id => 'congelador=' + encodeURIComponent(id)).join('&');
+    window.location.href = '{% url "exportar_congeladores_seleccionados" %}?' + params;
+  }
+
   document.addEventListener('DOMContentLoaded', function() {
-    const checkboxes = document.querySelectorAll('input[type="checkbox"][name="congelador"], input[type="checkbox"][name="estante"], input[type="checkbox"][name="rack"], input[type="checkbox"][name="caja"], input[type="checkbox"][name="subposicion"]');
+    const checkboxes = obtenerTodosCheckboxes();
     checkboxes.forEach(checkbox => {
-      checkbox.addEventListener('change', actualizarEstadoBotonEliminar);
-    });
-    const checkboxesCongelador = document.querySelectorAll('input[type="checkbox"][name="congelador"]');
-    checkboxesCongelador.forEach(checkbox => {
-      checkbox.addEventListener('change', actualizarEstadoBotonExportar);
+      checkbox.addEventListener('change', actualizarEstadoBotones);
     });
   });
 </script>
