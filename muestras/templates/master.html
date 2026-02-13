@@ -34,7 +34,7 @@
 
         <div class="menu-auth">
           {% if user.is_authenticated %}
-          <p> Usuario: {{ user.username }} </p>
+
           <form action="{% url 'logout' %}" method="post">
           {% csrf_token %} 
           <button type="submit">Cerrar sesión ({{ user.username }})</button>
