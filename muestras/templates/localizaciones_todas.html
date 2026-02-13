@@ -9,49 +9,112 @@ Archivo de muestras
 
 <link rel="stylesheet" href="{% static 'localizaciones_todas.css' %}">
 <script src="{% static 'mostrar.js' %}"></script>
-<form action = "{% url 'eliminar_localizacion'%}" method="post">
+
+<style>
+  button[disabled] {
+    opacity: 0.5 !important;
+    cursor: not-allowed !important;
+    pointer-events: none !important;
+  }
+</style>
+
+<button type="button"
+    onclick="location.href='/'"
+    class="accion-btn accion-secundaria" style="margin-bottom: 14px;">
+  ⬅ Volver al inicio
+</button>
+
+<!-- ========== PANEL DE FILTROS ========== -->
+<div class="collapsible">
+    <button class="collapsible-header">🔍 Filtros</button>
+    <div class="collapsible-content">
+      <div class="filter-panel">
+        <form action="" id="filter-form">
+          <div class="filter-grid">
+            <div class="filter-field">
+              <label>Congelador</label>
+              <input type="text" name="filtro_congelador">
+            </div>
+            <div class="filter-field">
+              <label>Estante</label>
+              <input type="text" name="filtro_estante">
+            </div>
+            <div class="filter-field">
+              <label>Rack</label>
+              <input type="text" name="filtro_rack">
+            </div>
+            <div class="filter-field">
+              <label>Caja</label>
+              <input type="text" name="filtro_caja">
+            </div>
+          </div>
+
+          <div class="filter-buttons">
+            <button type="submit" class="btn btn-primary">
+              🔎 Filtrar
+            </button>
+            <a href="/archivo/" class="btn btn-secondary">
+              ✖ Eliminar filtros
+            </a>
+          </div>
+        </form>
+      </div>
+    </div>
+</div>
+
+<!-- ========== PANEL DE ACCIONES ========== -->
+<div class="collapsible">
+    <button class="collapsible-header">⚙️ Acciones</button>
+    <div class="collapsible-content">
+      <div class="action-buttons">
+
+        <div class="action-row">
+          <button type="button"
+              onclick="location.href='/archivo/nuevo'"
+              class="btn">
+            📥 Importar posiciones
+          </button>
+        </div>
+
+        <div class="action-row">
+          <button type="button" class="btn btn-success"
+              onclick="location.href='{% url "exportar_congeladores" %}'">
+            📊⬇ Exportar
+          </button>
+
+          <button type="button" class="btn btn-success" id="exportar_seleccionadas" disabled
+              onclick="exportarSeleccionadas()">
+            📊✅ Exportar seleccionadas
+          </button>
+
+          <button type="button" class="btn btn-success" id="exportar_libres" disabled
+              onclick="exportarPosicionesLibres()">
+            📊⬇ Exportar posiciones libres
+          </button>
+        </div>
+
+        <div class="action-row">
+          <button type="button" class="btn btn-danger" id="eliminar-btn" disabled
+              onclick="document.getElementById('eliminar-submit').click()">
+            🗑 Eliminar posiciones
+          </button>
+        </div>
+
+        <div class="action-row">
+          <input type="button" value="☑️ Seleccionar todo" onclick="seleccionarTodo()" class="btn btn-secondary">
+          <input type="button" value="☐ Deseleccionar" onclick="deseleccionarTodo()" class="btn btn-secondary">
+        </div>
+
+      </div>
+    </div>
+</div>
+
+<form action="{% url 'eliminar_localizacion' %}" method="post" id="eliminar-form">
   {%csrf_token%}
-  <div class="acciones-archivo">
 
-    <button type="button"
-        onclick="location.href='/'"
-        class="accion-btn accion-secundaria">
-    ⬅ Volver al inicio
-    </button>
-
-    <button type="button"
-        onclick="location.href='/archivo/nuevo'"
-        class="accion-btn accion-primaria">
-    📥 Importar posiciones
-    </button>
-
-    <button type="button" class="accion-btn accion-exportar"
-        onclick="location.href='{% url "exportar_congeladores" %}'">
-    📊⬇ Exportar
-    </button>
-
-    <button type="button" class="accion-btn accion-exportar" id="exportar_seleccionadas" disabled
-        onclick="exportarSeleccionadas()">
-    📊⬇ Exportar seleccionadas
-    </button>
-
-    <button type="button" class="accion-btn accion-exportar" id="exportar_libres" disabled
-        onclick="exportarPosicionesLibres()">
-    📊⬇ Exportar posiciones libres
-    </button>
-
-    <button type="submit" class="accion-btn accion-peligro" id="eliminar" name="eliminar"
-        onclick="return confirm('¿Quieres eliminar las posiciones seleccionadas?')" disabled>
-        🗑 Eliminar posiciones
-    </button>
-
-</div>
-
-<!-- Seleccionar todo / Deseleccionar -->
-<div class="action-row" style="margin-bottom: 14px;">
-    <input type="button" value="☑️ Seleccionar todo" onclick="seleccionarTodo()" class="btn btn-secondary">
-    <input type="button" value="☐ Deseleccionar" onclick="deseleccionarTodo()" class="btn btn-secondary">
-</div>
+  <!-- Botón oculto para submit del formulario de eliminar -->
+  <button type="submit" id="eliminar-submit" name="eliminar" style="display:none;"
+      onclick="return confirm('¿Quieres eliminar las posiciones seleccionadas?')"></button>
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
@@ -77,7 +140,7 @@ Archivo de muestras
 
   function actualizarEstadoBotonEliminar() {
     const checkboxes = obtenerTodosCheckboxes();
-    const botonEliminar = document.getElementById('eliminar');
+    const botonEliminar = document.getElementById('eliminar-btn');
     const haySeleccionados = Array.from(checkboxes).some(cb => cb.checked);
     botonEliminar.disabled = !haySeleccionados;
   }
@@ -112,24 +175,42 @@ Archivo de muestras
     window.location.href = '{% url "exportar_congeladores_seleccionados" %}?' + params;
   }
 
-  document.addEventListener('DOMContentLoaded', function() {
+  // Collapsible panels
+  document.addEventListener("DOMContentLoaded", function() {
+    const headers = document.querySelectorAll(".collapsible-header");
+    headers.forEach(header => {
+      header.addEventListener("click", function() {
+        const content = this.nextElementSibling;
+        this.classList.toggle("active");
+        if (content.style.maxHeight) {
+          content.style.maxHeight = null;
+          content.classList.remove("open");
+        } else {
+          content.style.maxHeight = content.scrollHeight + "px";
+          content.classList.add("open");
+        }
+      });
+    });
+
+    // Listeners para checkboxes
     const checkboxes = obtenerTodosCheckboxes();
     checkboxes.forEach(checkbox => {
       checkbox.addEventListener('change', actualizarEstadoBotones);
     });
   });
 </script>
+
 {% if messages %}
  {% for message in messages %}
   <script>
       Swal.fire({
         title: '{{ message.tags|capfirst }}',
         text: '{{ message }}',
-        icon: '{{ message.tags }}', // 'success', 'error', 'info', 'warning'
+        icon: '{{ message.tags }}',
         confirmButtonText: 'Aceptar'
       });
-</script>
-{%endfor%}
+  </script>
+ {%endfor%}
 {% endif %}
 <!-- Navegación jerárquica y desplegable de congeladores, estantes, racks, cajas y muestras -->
 <nav id="archivo">
