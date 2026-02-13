@@ -33,19 +33,30 @@ Archivo de muestras
           <div class="filter-grid">
             <div class="filter-field">
               <label>Congelador</label>
-              <input type="text" name="filtro_congelador">
+              <select name="filtro_congelador" id="filtro-congelador">
+                <option value="">-- Seleccionar congelador --</option>
+                {% for cong in opciones_congeladores %}
+                  <option value="{{ cong }}">{{ cong }}</option>
+                {% endfor %}
+              </select>
             </div>
             <div class="filter-field">
               <label>Estante</label>
-              <input type="text" name="filtro_estante">
+              <select name="filtro_estante" id="filtro-estante" disabled>
+                <option value="">-- Selecciona un congelador primero --</option>
+              </select>
             </div>
             <div class="filter-field">
               <label>Rack</label>
-              <input type="text" name="filtro_rack">
+              <select name="filtro_rack" id="filtro-rack" disabled>
+                <option value="">-- Selecciona un estante primero --</option>
+              </select>
             </div>
             <div class="filter-field">
               <label>Caja</label>
-              <input type="text" name="filtro_caja">
+              <select name="filtro_caja" id="filtro-caja" disabled>
+                <option value="">-- Selecciona un rack primero --</option>
+              </select>
             </div>
           </div>
 
@@ -61,6 +72,123 @@ Archivo de muestras
       </div>
     </div>
 </div>
+
+<script>
+// Cascading filters: Congelador → Estante → Rack → Caja
+document.addEventListener('DOMContentLoaded', function() {
+  const selCongelador = document.getElementById('filtro-congelador');
+  const selEstante = document.getElementById('filtro-estante');
+  const selRack = document.getElementById('filtro-rack');
+  const selCaja = document.getElementById('filtro-caja');
+
+  // Valores guardados del filtro actual (para restaurar tras carga)
+  const savedCongelador = '{{ filtro_congelador|default:"" }}';
+  const savedEstante = '{{ filtro_estante|default:"" }}';
+  const savedRack = '{{ filtro_rack|default:"" }}';
+  const savedCaja = '{{ filtro_caja|default:"" }}';
+
+  function resetSelect(sel, placeholder) {
+    sel.innerHTML = '<option value="">' + placeholder + '</option>';
+    sel.disabled = true;
+  }
+
+  function cargarEstantes(congeladorNombre, callback) {
+    resetSelect(selEstante, '-- Cargando estantes... --');
+    resetSelect(selRack, '-- Selecciona un estante primero --');
+    resetSelect(selCaja, '-- Selecciona un rack primero --');
+
+    if (!congeladorNombre) {
+      resetSelect(selEstante, '-- Selecciona un congelador primero --');
+      return;
+    }
+
+    fetch('/api/get_estantes_por_congelador/?congelador=' + encodeURIComponent(congeladorNombre))
+      .then(r => r.json())
+      .then(data => {
+        selEstante.innerHTML = '<option value="">-- Seleccionar estante --</option>';
+        data.estantes.forEach(e => {
+          selEstante.innerHTML += '<option value="' + e.id + '">' + e.numero + '</option>';
+        });
+        selEstante.disabled = false;
+        if (callback) callback();
+      });
+  }
+
+  function cargarRacks(estanteId, callback) {
+    resetSelect(selRack, '-- Cargando racks... --');
+    resetSelect(selCaja, '-- Selecciona un rack primero --');
+
+    if (!estanteId) {
+      resetSelect(selRack, '-- Selecciona un estante primero --');
+      return;
+    }
+
+    fetch('/api/get_racks_por_estante/?estante_id=' + encodeURIComponent(estanteId))
+      .then(r => r.json())
+      .then(data => {
+        selRack.innerHTML = '<option value="">-- Seleccionar rack --</option>';
+        data.racks.forEach(r => {
+          selRack.innerHTML += '<option value="' + r.id + '">' + r.numero + '</option>';
+        });
+        selRack.disabled = false;
+        if (callback) callback();
+      });
+  }
+
+  function cargarCajas(rackId, callback) {
+    resetSelect(selCaja, '-- Cargando cajas... --');
+
+    if (!rackId) {
+      resetSelect(selCaja, '-- Selecciona un rack primero --');
+      return;
+    }
+
+    fetch('/api/get_cajas_por_rack/?rack_id=' + encodeURIComponent(rackId))
+      .then(r => r.json())
+      .then(data => {
+        selCaja.innerHTML = '<option value="">-- Seleccionar caja --</option>';
+        data.cajas.forEach(c => {
+          selCaja.innerHTML += '<option value="' + c.id + '">' + c.numero + '</option>';
+        });
+        selCaja.disabled = false;
+        if (callback) callback();
+      });
+  }
+
+  // Eventos de cambio
+  selCongelador.addEventListener('change', function() {
+    cargarEstantes(this.value);
+  });
+
+  selEstante.addEventListener('change', function() {
+    cargarRacks(this.value);
+  });
+
+  selRack.addEventListener('change', function() {
+    cargarCajas(this.value);
+  });
+
+  // Restaurar filtros activos al cargar la página
+  if (savedCongelador) {
+    selCongelador.value = savedCongelador;
+    cargarEstantes(savedCongelador, function() {
+      if (savedEstante) {
+        selEstante.value = savedEstante;
+        cargarRacks(savedEstante, function() {
+          if (savedRack) {
+            selRack.value = savedRack;
+            cargarCajas(savedRack, function() {
+              if (savedCaja) {
+                selCaja.value = savedCaja;
+              }
+            });
+          }
+        });
+      }
+    });
+  }
+});
+</script>
 
 <!-- ========== PANEL DE ACCIONES ========== -->
 <div class="collapsible">
@@ -191,6 +319,16 @@ Archivo de muestras
         }
       });
     });
+
+    // Si hay filtros activos, abrir automáticamente el panel de Filtros
+    const hayFiltros = '{{ filtro_congelador }}' || '{{ filtro_estante }}' || '{{ filtro_rack }}' || '{{ filtro_caja }}';
+    if (hayFiltros) {
+      const filtrosHeader = headers[0]; // primer collapsible = Filtros
+      const filtrosContent = filtrosHeader.nextElementSibling;
+      filtrosHeader.classList.add("active");
+      filtrosContent.style.maxHeight = filtrosContent.scrollHeight + "px";
+      filtrosContent.classList.add("open");
+    }
 
     // Listeners para checkboxes
     const checkboxes = obtenerTodosCheckboxes();

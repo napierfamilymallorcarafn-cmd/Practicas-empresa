@@ -1856,29 +1856,63 @@ def descargar_plantilla(request,macro:int):
 def localizaciones(request):
     # Vista que muestra todas las localizaciones, tengan o no muestra
 
-    # Anotar el número de muestras en cada caja
+    # Recoger filtros
+    filtro_congelador = request.GET.get('filtro_congelador', '').strip()
+    filtro_estante = request.GET.get('filtro_estante', '').strip()
+    filtro_rack = request.GET.get('filtro_rack', '').strip()
+    filtro_caja = request.GET.get('filtro_caja', '').strip()
+
+    # Construir querysets filtrados para cada nivel
     cajas_qs = Caja.objects.annotate(
         numero_muestras=Count(
             'subposiciones',
             filter=Q(subposiciones__vacia=False)
         )
     )
+    if filtro_caja:
+        cajas_qs = cajas_qs.filter(id=filtro_caja)
 
-    # Prefetch para optimizar consultas (sin subposiciones, se cargan por AJAX)
-    congeladores = Congelador.objects.prefetch_related(
-        Prefetch(
-            'estantes__racks__cajas',
-            queryset=cajas_qs
-        )
+    racks_qs = Rack.objects.all()
+    if filtro_rack:
+        racks_qs = racks_qs.filter(id=filtro_rack)
+    racks_qs = racks_qs.prefetch_related(
+        Prefetch('cajas', queryset=cajas_qs)
     )
 
+    estantes_qs = Estante.objects.all()
+    if filtro_estante:
+        estantes_qs = estantes_qs.filter(id=filtro_estante)
+    estantes_qs = estantes_qs.prefetch_related(
+        Prefetch('racks', queryset=racks_qs)
+    )
 
-    
+    # Construir queryset de congeladores con un único prefetch anidado
+    congeladores = Congelador.objects.prefetch_related(
+        Prefetch('estantes', queryset=estantes_qs)
+    )
+
+    # Filtrar congeladores (filtro principal + asegurar que contienen los hijos filtrados)
+    if filtro_congelador:
+        congeladores = congeladores.filter(congelador=filtro_congelador)
+    if filtro_estante:
+        congeladores = congeladores.filter(estantes__id=filtro_estante).distinct()
+    if filtro_rack:
+        congeladores = congeladores.filter(estantes__racks__id=filtro_rack).distinct()
+    if filtro_caja:
+        congeladores = congeladores.filter(estantes__racks__cajas__id=filtro_caja).distinct()
 
     template = loader.get_template('localizaciones_todas.html')
 
+    # Opciones para filtros
+    opciones_congeladores = Congelador.objects.values_list('congelador', flat=True).distinct().order_by('congelador')
+
     context = {
-        'congeladores':congeladores,
+        'congeladores': congeladores,
+        'opciones_congeladores': opciones_congeladores,
+        'filtro_congelador': filtro_congelador,
+        'filtro_estante': filtro_estante,
+        'filtro_rack': filtro_rack,
+        'filtro_caja': filtro_caja,
     }
     return HttpResponse(template.render(context, request))
 @permission_required('muestras.can_add_localizaciones_web')

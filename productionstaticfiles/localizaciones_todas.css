@@ -237,6 +237,12 @@
     font-size: 14px;
 }
 
+.filter-field select:disabled {
+    background-color: #f0f0f0;
+    color: #999;
+    cursor: not-allowed;
+}
+
 .filter-row {
     grid-column: 1 / -1;
     border-top: 1px solid #eee;
