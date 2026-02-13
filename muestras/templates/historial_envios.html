@@ -80,7 +80,7 @@ Historial de envios
                 <tbody>
                 {% for envio in envios %}
                     <tr>
-                        <td>{{ envio.fecha_envio }}</td>
+                        <td data-sort="{{ envio.fecha_envio|date:'Y-m-d'|default:'' }}">{{ envio.fecha_envio }}</td>
                         <td>{{ envio.centro_destino }}</td>
                         <td>{{ envio.lugar_destino }}</td>
                         <td>
@@ -171,8 +171,16 @@ document.addEventListener('DOMContentLoaded', function() {
     
     function sortTable(colIndex, direction) {
         const sorted = [...rows].sort((a, b) => {
-            const aVal = a.cells[colIndex].textContent.trim();
-            const bVal = b.cells[colIndex].textContent.trim();
+            const cellA = a.cells[colIndex];
+            const cellB = b.cells[colIndex];
+            const aSort = cellA.getAttribute('data-sort');
+            const bSort = cellB.getAttribute('data-sort');
+            if (aSort !== null && bSort !== null) {
+                const cmp = (aSort || '').localeCompare(bSort || '');
+                return direction === 1 ? cmp : -cmp;
+            }
+            const aVal = cellA.textContent.trim();
+            const bVal = cellB.textContent.trim();
             const aNum = parseFloat(aVal);
             const bNum = parseFloat(bVal);
             if (!isNaN(aNum) && !isNaN(bNum)) {

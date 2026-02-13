@@ -71,9 +71,9 @@ Lista de estudios del investigador
                     {{ estudio.descripcion_estudio|default:"—" }}
                 </td>
 
-                <td>{{ estudio.fecha_inicio_estudio|default:"—" }}</td>
+                <td data-sort="{{ estudio.fecha_inicio_estudio|date:'Y-m-d'|default:'' }}">{{ estudio.fecha_inicio_estudio|default:"—" }}</td>
 
-                <td>{{ estudio.fecha_fin_estudio|default:"—" }}</td>
+                <td data-sort="{{ estudio.fecha_fin_estudio|date:'Y-m-d'|default:'' }}">{{ estudio.fecha_fin_estudio|default:"—" }}</td>
 
                 <td>{{ estudio.investigador_principal|default:"—" }}</td>
 
@@ -153,8 +153,19 @@ document.addEventListener('DOMContentLoaded', function() {
     
     function sortTable(colIndex, direction) {
         const sorted = [...rows].sort((a, b) => {
-            const aVal = a.cells[colIndex].textContent.trim();
-            const bVal = b.cells[colIndex].textContent.trim();
+            const cellA = a.cells[colIndex];
+            const cellB = b.cells[colIndex];
+            const aSort = cellA.getAttribute('data-sort');
+            const bSort = cellB.getAttribute('data-sort');
+            // Si las celdas tienen data-sort (fechas), usar ese valor
+            if (aSort !== null && bSort !== null) {
+                const aKey = aSort || '';
+                const bKey = bSort || '';
+                const cmp = aKey.localeCompare(bKey);
+                return direction === 1 ? cmp : -cmp;
+            }
+            const aVal = cellA.textContent.trim();
+            const bVal = cellB.textContent.trim();
             const aNum = parseFloat(aVal);
             const bNum = parseFloat(bVal);
             if (!isNaN(aNum) && !isNaN(bNum)) {

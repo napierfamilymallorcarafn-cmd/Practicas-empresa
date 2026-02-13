@@ -73,7 +73,7 @@ Historial de estudios
                             {% endif %}
                         </td>
 
-                        <td>{{ historial.fecha_asignacion }}</td>
+                        <td data-sort="{{ historial.fecha_asignacion|date:'Y-m-d'|default:'' }}">{{ historial.fecha_asignacion }}</td>
                         <td>{{ historial.usuario_asignacion.username }}</td>
                     </tr>
                 {% empty %}
@@ -158,8 +158,16 @@ document.addEventListener('DOMContentLoaded', function() {
     
     function sortTable(colIndex, direction) {
         const sorted = [...rows].sort((a, b) => {
-            const aVal = a.cells[colIndex].textContent.trim();
-            const bVal = b.cells[colIndex].textContent.trim();
+            const cellA = a.cells[colIndex];
+            const cellB = b.cells[colIndex];
+            const aSort = cellA.getAttribute('data-sort');
+            const bSort = cellB.getAttribute('data-sort');
+            if (aSort !== null && bSort !== null) {
+                const cmp = (aSort || '').localeCompare(bSort || '');
+                return direction === 1 ? cmp : -cmp;
+            }
+            const aVal = cellA.textContent.trim();
+            const bVal = cellB.textContent.trim();
             const aNum = parseFloat(aVal);
             const bNum = parseFloat(bVal);
             if (!isNaN(aNum) && !isNaN(bNum)) {

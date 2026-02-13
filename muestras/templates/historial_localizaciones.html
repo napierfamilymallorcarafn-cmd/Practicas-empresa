@@ -73,7 +73,7 @@ Historial de localizaciones
                             {% endif %}
                         </td>
 
-                        <td>{{ historial.fecha_asignacion }}</td>
+                        <td data-sort="{{ historial.fecha_asignacion|date:'Y-m-d'|default:'' }}">{{ historial.fecha_asignacion }}</td>
                         <td>{{ historial.usuario_asignacion.username }}</td>
                     </tr>
                 {% endfor %}
@@ -81,7 +81,7 @@ Historial de localizaciones
                 {% if muestra.estado_actual == 'Destruida' %}
                     <tr class="status-destroyed">
                         <td><strong>Destruida</strong></td>
-                        <td>{{ estado_destruccion.fecha }}</td>
+                        <td data-sort="{{ estado_destruccion.fecha|date:'Y-m-d'|default:'' }}">{{ estado_destruccion.fecha }}</td>
                         <td>{{ estado_destruccion.usuario.username }}</td>
                     </tr>
                 {% endif %}
@@ -160,8 +160,16 @@ document.addEventListener('DOMContentLoaded', function() {
     
     function sortTable(colIndex, direction) {
         const sorted = [...rows].sort((a, b) => {
-            const aVal = a.cells[colIndex].textContent.trim();
-            const bVal = b.cells[colIndex].textContent.trim();
+            const cellA = a.cells[colIndex];
+            const cellB = b.cells[colIndex];
+            const aSort = cellA.getAttribute('data-sort');
+            const bSort = cellB.getAttribute('data-sort');
+            if (aSort !== null && bSort !== null) {
+                const cmp = (aSort || '').localeCompare(bSort || '');
+                return direction === 1 ? cmp : -cmp;
+            }
+            const aVal = cellA.textContent.trim();
+            const bVal = cellB.textContent.trim();
             const aNum = parseFloat(aVal);
             const bNum = parseFloat(bVal);
             if (!isNaN(aNum) && !isNaN(bNum)) {

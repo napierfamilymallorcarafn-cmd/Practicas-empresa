@@ -323,6 +323,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const sorted = [...rows].sort((a, b) => {
             const aCell = a.cells[colIndex];
             const bCell = b.cells[colIndex];
+            const aSort = aCell ? aCell.getAttribute('data-sort') : null;
+            const bSort = bCell ? bCell.getAttribute('data-sort') : null;
+            if (aSort !== null && bSort !== null) {
+                const cmp = (aSort || '').localeCompare(bSort || '');
+                return direction === 1 ? cmp : -cmp;
+            }
             const aVal = aCell ? aCell.textContent.trim() : '';
             const bVal = bCell ? bCell.textContent.trim() : '';
             const aNum = parseFloat(aVal);
@@ -392,7 +398,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             </a>
                         </td>
 
-                        <td>{{ doc.fecha_subida }}</td>
+                        <td data-sort="{{ doc.fecha_subida|date:'Y-m-d H:i:s'|default:'' }}">{{ doc.fecha_subida }}</td>
                         <td>{{ doc.categoria }}</td>
                         <td>{{ doc.usuario_subida.username }}</td>
                         <td class="wrap-text">{{ doc.descripcion }}</td>
