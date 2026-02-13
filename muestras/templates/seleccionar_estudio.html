@@ -123,6 +123,8 @@ Seleccionar estudio
         body: formData,
         headers: { 'X-CSRFToken': formData.get('csrfmiddlewaretoken') }
       });
+      const ct = response.headers.get('Content-Type') || '';
+      if (ct.includes('text/html')) { const html = await response.text(); document.open(); document.write(html); document.close(); return; }
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';

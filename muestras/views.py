@@ -154,9 +154,13 @@ def _should_update(i, total, min_updates=80):
 # FUNCIONES AUXILIARES PARA PROGRESO AJAX (JSON streaming, sin cambiar de página)
 # ============================================================================
 
-def _json_progress(current, total, status='processing', message=''):
+def _json_progress(current, total, status='processing', message='', redirect_url=''):
     """Devuelve una línea JSON para el streaming AJAX."""
-    return json.dumps({'current': current, 'total': total, 'status': status, 'message': message}) + '\n'
+    data = {'current': current, 'total': total, 'status': status, 'message': message}
+    if redirect_url:
+        data['redirect'] = redirect_url
+    return json.dumps(data) + '\n'
+
 @login_required
 def principal(request):
     # Vista principal de la aplicación, muestra una página de bienvenida
@@ -737,7 +741,7 @@ def upload_excel(request):
             total = len(filas_validas)
 
             def gen_confirmar_muestras():
-                yield _progress_page_start('Importando muestras', total)
+                yield _json_progress(0, total, 'start')
                 try:
                     with transaction.atomic():
                         for i, datos in enumerate(filas_validas):
@@ -824,12 +828,12 @@ def upload_excel(request):
                                     usuario_asignacion=request.user
                                 )
                             if _should_update(i, total):
-                                yield _progress_update(i + 1, total)
-                    yield _progress_done('/muestras/', 'Muestras importadas correctamente')
+                                yield _json_progress(i + 1, total, 'processing')
+                    yield _json_progress(total, total, 'done', 'Muestras importadas correctamente', '/muestras/')
                 except Exception as e:
-                    yield _progress_error(str(e))
+                    yield _json_progress(0, total, 'error', str(e))
 
-            return StreamingHttpResponse(gen_confirmar_muestras(), content_type='text/html')
+            return StreamingHttpResponse(gen_confirmar_muestras(), content_type='application/x-ndjson')
         # Si el usuario cancela, no se añade nada a la base de datos
         elif 'cancelar' in request.POST:
             messages.error(request,'Las muestras no se han añadido')
@@ -843,10 +847,6 @@ def upload_excel(request):
             if form.is_valid():
                 # Leer excel y preparar columnas 
                 excel_file = request.FILES['excel_file']
-                # Validar que sea un archivo Excel
-                if not excel_file.name.lower().endswith(('.xlsx', '.xls', '.xlsm')):
-                    return render(request, 'upload_excel.html', {'form': form, 'error': '❌ Error de formato: El archivo debe ser un Excel (.xlsx, .xls o .xlsm).'})
-                
                 excel_bytes = excel_file.read()
                 request.session['excel_file_name'] = excel_file.name
                 request.session['excel_file_base64']= base64.b64encode(excel_bytes).decode()
@@ -951,7 +951,7 @@ def upload_excel(request):
                     numero_registros = 0
                     nom_lab_excel = set()
 
-                    yield _progress_page_start('Validando muestras', total_filas)
+                    yield _json_progress(0, total_filas, 'start')
 
                     # Recorrer el df para detectar errores y normalizar
                     for idx, row in df.iterrows():
@@ -1148,7 +1148,7 @@ def upload_excel(request):
                             filas_validas.append(datos)
 
                         if _should_update(idx, total_filas):
-                            yield _progress_update(idx + 1, total_filas)
+                            yield _json_progress(idx + 1, total_filas, 'processing')
                     
                     # Guardar en la sesión las filas validas y los errores detectados
                     request.session['filas_validas']=filas_validas
@@ -1202,9 +1202,9 @@ def upload_excel(request):
                     }
                     request.session.save()
 
-                    yield _progress_done(request.path + '?mostrar_confirmacion=1', 'Validación completada')
+                    yield _json_progress(total_filas, total_filas, 'done', 'Validación completada', request.path + '?mostrar_confirmacion=1')
 
-                return StreamingHttpResponse(gen_validar_muestras(), content_type='text/html')
+                return StreamingHttpResponse(gen_validar_muestras(), content_type='application/x-ndjson')
         # Si se solicita un excel de errores, este se rellena en base a los errores detectados durante la validación 
         elif 'excel_errores' in request.POST:
                     # Leer los errores y el excel de la sesión
@@ -1369,7 +1369,7 @@ def cambio_posicion(request):
             total = len(filas_validas)
 
             def gen_confirmar_cambio():
-                yield _progress_page_start('Cambiando posiciones', total)
+                yield _json_progress(0, total, 'start')
                 try:
                     with transaction.atomic():
                         for i, datos in enumerate(filas_validas):
@@ -1406,12 +1406,12 @@ def cambio_posicion(request):
                                 usuario_asignacion=request.user
                             )
                             if _should_update(i, total):
-                                yield _progress_update(i + 1, total)
-                    yield _progress_done('/muestras/', 'Posiciones actualizadas correctamente')
+                                yield _json_progress(i + 1, total, 'processing')
+                    yield _json_progress(total, total, 'done', 'Posiciones actualizadas correctamente', '/muestras/')
                 except Exception as e:
-                    yield _progress_error(str(e))
+                    yield _json_progress(0, total, 'error', str(e))
 
-            return StreamingHttpResponse(gen_confirmar_cambio(), content_type='text/html')
+            return StreamingHttpResponse(gen_confirmar_cambio(), content_type='application/x-ndjson')
 
         # Si el usuario cancela, no se hace nada
         elif 'cancelar' in request.POST:
@@ -1425,11 +1425,6 @@ def cambio_posicion(request):
             if form.is_valid():
                 # Leer excel y preparar columnas 
                 excel_file = request.FILES['excel_file']
-                
-                # Validar que sea un archivo Excel
-                if not excel_file.name.lower().endswith(('.xlsx', '.xls', '.xlsm')):
-                    return render(request, 'upload_excel_cambio_posicion.html', {'form': form, 'error': '❌ Error de formato: El archivo debe ser un Excel (.xlsx, .xls o .xlsm).'})
-                
                 excel_bytes = excel_file.read()
                 request.session['excel_file_name'] = excel_file.name
                 request.session['excel_file_base64']= base64.b64encode(excel_bytes).decode()
@@ -1526,7 +1521,7 @@ def cambio_posicion(request):
                     nom_lab_excel = set()
                     numero_registros = 0
 
-                    yield _progress_page_start('Validando cambio de posición', total_filas)
+                    yield _json_progress(0, total_filas, 'start')
 
                     # Recorrer el df para detectar errores y normalizar
                     for idx, row in df.iterrows():
@@ -1585,7 +1580,7 @@ def cambio_posicion(request):
                             filas_validas.append(datos)
 
                         if _should_update(idx, total_filas):
-                            yield _progress_update(idx + 1, total_filas)
+                            yield _json_progress(idx + 1, total_filas, 'processing')
 
                     # Guardar en la sesión las filas validas y los errores detectados
                     request.session['filas_validas'] = filas_validas
@@ -1618,9 +1613,9 @@ def cambio_posicion(request):
                         'mensajes': mensajes
                     }
                     request.session.save()
-                    yield _progress_done(request.path + '?mostrar_confirmacion=1', 'Validación completada')
+                    yield _json_progress(total_filas, total_filas, 'done', 'Validación completada', request.path + '?mostrar_confirmacion=1')
 
-                return StreamingHttpResponse(gen_validar_cambio(), content_type='text/html')
+                return StreamingHttpResponse(gen_validar_cambio(), content_type='application/x-ndjson')
             
         # Si se solicita un excel de errores, este se rellena en base a los errores detectados durante la validación 
         elif 'excel_errores' in request.POST:
@@ -1999,7 +1994,7 @@ def upload_excel_localizaciones(request):
             total = len(filas)
 
             def gen_confirmar_localizaciones():
-                yield _progress_page_start('Importando localizaciones', total)
+                yield _json_progress(0, total, 'start')
                 try:
                     with transaction.atomic():
                         for i, fila in enumerate(filas):
@@ -2025,12 +2020,12 @@ def upload_excel_localizaciones(request):
                                 numero=fila['subposicion']
                             )
                             if _should_update(i, total):
-                                yield _progress_update(i + 1, total)
-                    yield _progress_done('/archivo/', 'Localizaciones importadas correctamente')
+                                yield _json_progress(i + 1, total, 'processing')
+                    yield _json_progress(total, total, 'done', 'Localizaciones importadas correctamente', '/archivo/')
                 except Exception as e:
-                    yield _progress_error(str(e))
+                    yield _json_progress(0, total, 'error', str(e))
 
-            return StreamingHttpResponse(gen_confirmar_localizaciones(), content_type='text/html')
+            return StreamingHttpResponse(gen_confirmar_localizaciones(), content_type='application/x-ndjson')
         # Si el usuario cancela, no se hace nada
         elif 'cancelar' in request.POST:
             messages.error(request, 'Las localizaciones del excel no se han añadido.')
@@ -2097,7 +2092,7 @@ def upload_excel_localizaciones(request):
                     # detectar si la misma subposición se usa más de una vez dentro del Excel
                     subposiciones_usadas = set()
 
-                    yield _progress_page_start('Validando localizaciones', total_filas)
+                    yield _json_progress(0, total_filas, 'start')
 
                     for idx, row in df.iterrows():
                         fila_numero = idx + 2
@@ -2157,7 +2152,7 @@ def upload_excel_localizaciones(request):
                         # Si hay errores bloqueantes hasta ahora, saltar validaciones posteriores
                         if errores[fila_numero]["bloqueantes"]:
                             if _should_update(idx, total_filas):
-                                yield _progress_update(idx + 1, total_filas)
+                                yield _json_progress(idx + 1, total_filas, 'processing')
                             continue
 
                         # Comprobar consistencia de rack: misma (congelador, estante, posicion_rack_estante)
@@ -2167,7 +2162,7 @@ def upload_excel_localizaciones(request):
                             if pos_rack_to_rack[pos_rack_key] != rack:
                                 errores[fila_numero]["bloqueantes"].append("rack_inconsistente")
                                 if _should_update(idx, total_filas):
-                                    yield _progress_update(idx + 1, total_filas)
+                                    yield _json_progress(idx + 1, total_filas, 'processing')
                                 continue
                         else:
                             pos_rack_to_rack[pos_rack_key] = rack
@@ -2178,7 +2173,7 @@ def upload_excel_localizaciones(request):
                             if pos_to_caja[pos_key] != caja:
                                 errores[fila_numero]["bloqueantes"].append("caja_inconsistente")
                                 if _should_update(idx, total_filas):
-                                    yield _progress_update(idx + 1, total_filas)
+                                    yield _json_progress(idx + 1, total_filas, 'processing')
                                 continue
                         else:
                             pos_to_caja[pos_key] = caja
@@ -2188,7 +2183,7 @@ def upload_excel_localizaciones(request):
                         if subpos_key in subposiciones_usadas:
                             errores[fila_numero]["bloqueantes"].append("subposicion_duplicada_excel")
                             if _should_update(idx, total_filas):
-                                yield _progress_update(idx + 1, total_filas)
+                                yield _json_progress(idx + 1, total_filas, 'processing')
                             continue
                         else:
                             subposiciones_usadas.add(subpos_key)
@@ -2201,7 +2196,7 @@ def upload_excel_localizaciones(request):
                         ).exclude(numero__iexact=rack).exists():
                             errores[fila_numero]["bloqueantes"].append("posicion_rack_ocupada")
                             if _should_update(idx, total_filas):
-                                yield _progress_update(idx + 1, total_filas)
+                                yield _json_progress(idx + 1, total_filas, 'processing')
                             continue
                         
                         # Comprobar si la posición de la caja ya está ocupada por otra caja
@@ -2213,7 +2208,7 @@ def upload_excel_localizaciones(request):
                         ).exclude(numero__iexact=caja).exists():
                             errores[fila_numero]["bloqueantes"].append("posicion_caja_ocupada")
                             if _should_update(idx, total_filas):
-                                yield _progress_update(idx + 1, total_filas)
+                                yield _json_progress(idx + 1, total_filas, 'processing')
                             continue
                         
                         # Comprobar si la localización ya existe (case-insensitive para textos)
@@ -2236,7 +2231,7 @@ def upload_excel_localizaciones(request):
                             })
 
                         if _should_update(idx, total_filas):
-                            yield _progress_update(idx + 1, total_filas)
+                            yield _json_progress(idx + 1, total_filas, 'processing')
 
                     # Guardar en sesión los resultados de la validación
                     request.session['filas_validas'] = filas_validas
@@ -2273,9 +2268,9 @@ def upload_excel_localizaciones(request):
                         'mensajes': mensajes
                     }
                     request.session.save()
-                    yield _progress_done(request.path + '?mostrar_confirmacion=1', 'Validación completada')
+                    yield _json_progress(total_filas, total_filas, 'done', 'Validación completada', request.path + '?mostrar_confirmacion=1')
 
-                return StreamingHttpResponse(gen_validar_localizaciones(), content_type='text/html')
+                return StreamingHttpResponse(gen_validar_localizaciones(), content_type='application/x-ndjson')
             
         # Si se solicita un excel de errores, este se rellena en base a los errores detectados durante la validación
         elif 'excel_errores' in request.POST:
@@ -2647,7 +2642,7 @@ def excel_estudios(request):
             total = len(filas_validas)
 
             def gen_confirmar_estudios():
-                yield _progress_page_start('Importando estudios', total)
+                yield _json_progress(0, total, 'start')
                 try:
                     with transaction.atomic():
                         for i, datos in enumerate(filas_validas):
@@ -2662,12 +2657,12 @@ def excel_estudios(request):
                                 investigador_principal=datos['investigador_principal']
                             )
                             if _should_update(i, total):
-                                yield _progress_update(i + 1, total)
-                    yield _progress_done('/estudios/', 'Estudios importados correctamente')
+                                yield _json_progress(i + 1, total, 'processing')
+                    yield _json_progress(total, total, 'done', 'Estudios importados correctamente', '/estudios/')
                 except Exception as e:
-                    yield _progress_error(str(e))
+                    yield _json_progress(0, total, 'error', str(e))
 
-            return StreamingHttpResponse(gen_confirmar_estudios(), content_type='text/html')
+            return StreamingHttpResponse(gen_confirmar_estudios(), content_type='application/x-ndjson')
         # Si el usuario cancela, no se hace nada
         elif 'cancelar' in request.POST:
             messages.error(request,'Los estudios no se han añadido')
@@ -2677,13 +2672,14 @@ def excel_estudios(request):
             if form.is_valid():
                 # Leer excel y preparar columnas
                 excel_file = request.FILES['excel_file']
-                if not excel_file.name.lower().endswith(('.xlsx', '.xls')):
-                    return render(request, 'upload_excel_estudios.html', {'form': form, 'error': '❌ Error de formato: El archivo debe ser un Excel (.xlsx o .xls).'})
                 excel_bytes = excel_file.read()
                 request.session['excel_file_name'] = excel_file.name
                 request.session['excel_file_base64']= base64.b64encode(excel_bytes).decode()
                 excel_stream = io.BytesIO(excel_bytes)
-                df = pd.read_excel(excel_stream)
+                try:
+                    df = pd.read_excel(excel_stream)
+                except Exception as e:
+                    return render(request, 'upload_excel_estudios.html', {'form': form, 'error': f'❌ Error al leer el archivo: {str(e)}'})
                 if df.empty:
                     return render(request, 'upload_excel_estudios.html', {'form': form, 'error': '❌ Error de formato: El archivo Excel está vacío o no contiene filas de datos.'})
                 rename_columns = {
@@ -2745,7 +2741,7 @@ def excel_estudios(request):
                     }
                     referencias_excel = set()
 
-                    yield _progress_page_start('Validando estudios', total_filas)
+                    yield _json_progress(0, total_filas, 'start')
 
                     for idx, row in df.iterrows():
                         # Recorrer el df para detectar errores y normalizar
@@ -2846,7 +2842,7 @@ def excel_estudios(request):
                             filas_validas.append(datos)
 
                         if _should_update(idx, total_filas):
-                            yield _progress_update(idx + 1, total_filas)
+                            yield _json_progress(idx + 1, total_filas, 'processing')
 
                     request.session['filas_validas'] = filas_validas
                     request.session['errores'] = errores
@@ -2898,9 +2894,9 @@ def excel_estudios(request):
                         'mensajes': mensajes
                     }
                     request.session.save()
-                    yield _progress_done(request.path + '?mostrar_confirmacion=1', 'Validación completada')
+                    yield _json_progress(total_filas, total_filas, 'done', 'Validación completada', request.path + '?mostrar_confirmacion=1')
 
-                return StreamingHttpResponse(gen_validar_estudios(), content_type='text/html')
+                return StreamingHttpResponse(gen_validar_estudios(), content_type='application/x-ndjson')
             
         # Si se solicita un excel de errores, este se rellena en base a los errores detectados durante la validación
         elif 'excel_errores' in request.POST:
@@ -3363,7 +3359,7 @@ def upload_excel_envios(request,centro):
             total = len(filas_validas)
 
             def gen_confirmar_envios():
-                yield _progress_page_start('Registrando envíos', total)
+                yield _json_progress(0, total, 'start')
                 try:
                     with transaction.atomic():
                         for i, datos in enumerate(filas_validas):
@@ -3393,12 +3389,12 @@ def upload_excel_envios(request,centro):
                                 muestra.estado_actual = 'PENV'
                                 muestra.save()
                             if _should_update(i, total):
-                                yield _progress_update(i + 1, total)
-                    yield _progress_done('/muestras/', 'Envíos registrados correctamente')
+                                yield _json_progress(i + 1, total, 'processing')
+                    yield _json_progress(total, total, 'done', 'Envíos registrados correctamente', '/muestras/')
                 except Exception as e:
-                    yield _progress_error(str(e))
+                    yield _json_progress(0, total, 'error', str(e))
 
-            return StreamingHttpResponse(gen_confirmar_envios(), content_type='text/html')
+            return StreamingHttpResponse(gen_confirmar_envios(), content_type='application/x-ndjson')
         
         elif 'cancelar' in request.POST:
             # Si el usuario cancela, no se registra nada
@@ -3440,7 +3436,10 @@ def upload_excel_envios(request,centro):
                 request.session['excel_file_name'] = excel_file.name
                 request.session['excel_file_base64']= base64.b64encode(excel_bytes).decode()
                 excel_stream = io.BytesIO(excel_bytes)
-                df = pd.read_excel(excel_stream)
+                try:
+                    df = pd.read_excel(excel_stream)
+                except Exception as e:
+                    return render(request, 'upload_excel_envios.html', {'form': form, 'error': f'❌ Error al leer el archivo: {str(e)}'})
                 rename_columns = {
                     'Muestra':'nom_lab',
                     'Volumen enviado':'volumen_enviado', 
@@ -3497,7 +3496,7 @@ def upload_excel_envios(request,centro):
                     nom_lab_excel = set()
                     numero_registros = 0
 
-                    yield _progress_page_start('Validando envíos', total_filas)
+                    yield _json_progress(0, total_filas, 'start')
 
                     # Recorrer las filas del excel para realizar la validación previa a la carga de datos
                     for idx, row in df.iterrows():
@@ -3560,7 +3559,7 @@ def upload_excel_envios(request,centro):
                             filas_validas.append(datos)
 
                         if _should_update(idx, total_filas):
-                            yield _progress_update(idx + 1, total_filas)
+                            yield _json_progress(idx + 1, total_filas, 'processing')
                 
                     request.session['filas_validas'] = filas_validas
                     request.session['errores'] = errores
@@ -3578,9 +3577,9 @@ def upload_excel_envios(request,centro):
                         'mensajes': mensajes
                     }
                     request.session.save()
-                    yield _progress_done(request.path + '?mostrar_confirmacion=1', 'Validación completada')
+                    yield _json_progress(total_filas, total_filas, 'done', 'Validación completada', request.path + '?mostrar_confirmacion=1')
 
-                return StreamingHttpResponse(gen_validar_envios(), content_type='text/html')
+                return StreamingHttpResponse(gen_validar_envios(), content_type='application/x-ndjson')
         # Si se solicita un excel de errores, este se rellena en base a los errores detectados durante la validación 
         elif 'excel_errores' in request.POST:
                 # Leer los errores y el excel de la sesión

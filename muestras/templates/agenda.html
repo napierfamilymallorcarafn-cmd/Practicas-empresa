@@ -6,6 +6,13 @@ Agenda
 {% load static %}
 {% block content %}
 <link rel ="stylesheet" href="{% static 'muestras_todas.css' %}">
+<style>
+  button[disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+</style>
     <!-- BARRA DE ACCIONES -->
     <div class="acciones-estudios">
         <a href="/muestras" class="accion-btn accion-secundaria">
@@ -33,7 +40,9 @@ Agenda
         <div class="form-actions" style="margin-bottom: 15px;">
             <button type="submit"
                     class="accion-btn accion-peligro"
+                    id="btn-eliminar-centros"
                     name="eliminar"
+                    disabled
                     onclick="return confirm('¿Quieres eliminar los centros seleccionados?')">
                 🗑 Eliminar centros seleccionados
             </button>
@@ -61,7 +70,8 @@ Agenda
                         <td>
                             <input type="checkbox"
                                    name="ids_centro"
-                                   value="{{ contacto.id }}">
+                                   value="{{ contacto.id }}"
+                                   onchange="actualizarBotonEliminar()">
                         </td>
 
                         <td>
@@ -90,5 +100,18 @@ Agenda
             </table>
         </div>
     </form>
+
+<script>
+function actualizarBotonEliminar() {
+    const checkboxes = document.querySelectorAll('input[name="ids_centro"]');
+    const btn = document.getElementById('btn-eliminar-centros');
+    const haySeleccionados = Array.from(checkboxes).some(cb => cb.checked);
+    if (haySeleccionados) {
+        btn.removeAttribute('disabled');
+    } else {
+        btn.setAttribute('disabled', 'disabled');
+    }
+}
+</script>
 
 {% endblock %}

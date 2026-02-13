@@ -305,6 +305,8 @@ document.addEventListener('DOMContentLoaded', function() {
         body: formData,
         headers: { 'X-CSRFToken': formData.get('csrfmiddlewaretoken') }
       });
+      const ct = response.headers.get('Content-Type') || '';
+      if (ct.includes('text/html')) { const html = await response.text(); document.open(); document.write(html); document.close(); return; }
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
@@ -323,7 +325,7 @@ document.addEventListener('DOMContentLoaded', function() {
             } else if (data.status === 'done') {
               _actualizarBarraProgreso(data.total, data.total);
               cerrarProgreso(true, data.message || '¡Completado!');
-              setTimeout(() => location.reload(), 900);
+              setTimeout(() => { window.location.href = data.redirect || location.href; }, 900);
               return;
             } else if (data.status === 'error') {
               cerrarProgreso(false, data.message || 'Error en el proceso');
@@ -333,7 +335,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
       }
       cerrarProgreso(true, '¡Completado!');
-      setTimeout(() => location.reload(), 900);
+      setTimeout(() => { window.location.href = location.href; }, 900);
     } catch (err) {
       cerrarProgreso(false, 'Error de conexión: ' + err.message);
     }
