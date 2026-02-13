@@ -90,7 +90,7 @@ def _progress_update(current, total):
     return f"""<script>
 document.getElementById('pbar').style.width='{pct:.1f}%';
 document.getElementById('pbar').textContent='{pct:.0f}%';
-document.getElementById('ptxt').innerHTML='<span class="spinner"></span>Procesando fila {current} de {total}';
+document.getElementById('ptxt').innerHTML='<span class="spinner"></span>Procesando registro {current} de {total}';
 document.getElementById('pcnt').textContent='{current} / {total}';
 </script>
 """
@@ -532,11 +532,26 @@ def acciones_post(request):
                 request.session['muestras_estudio']=muestras_seleccionadas
                 return redirect('seleccionar_estudio')
         elif 'eliminar' in request.POST:
-            # Se eliminan las muestras seleccionadas
+            # Se eliminan las muestras seleccionadas con progreso
             if muestras_seleccionadas:
-                muestras_a_procesar = Muestra.objects.filter(id__in=muestras_seleccionadas)
-                for muestra in muestras_a_procesar:
-                    eliminar_muestra(request, muestra.nom_lab)
+                def gen_eliminar():
+                    muestras_a_procesar = list(Muestra.objects.filter(id__in=muestras_seleccionadas))
+                    total = len(muestras_a_procesar)
+                    yield _progress_page_start('Eliminando muestras', total)
+                    try:
+                        for i, muestra in enumerate(muestras_a_procesar):
+                            if Subposicion.objects.filter(muestra=muestra).exists():
+                                subposicion = Subposicion.objects.get(muestra=muestra)
+                                subposicion.muestra = None
+                                subposicion.vacia = True
+                                subposicion.save()
+                            muestra.delete()
+                            if _should_update(i, total):
+                                yield _progress_update(i + 1, total)
+                        yield _progress_done('/muestras/', f'{total} muestras eliminadas correctamente')
+                    except Exception as e:
+                        yield _progress_error(str(e), '/muestras/')
+                return StreamingHttpResponse(gen_eliminar(), content_type='text/html')
         elif 'envio' in request.POST:
             # Se guardan las muestras seleccionadas en la sesión y se redirigue al usuario a la agenda de envíos
             if 'muestras_envio' in request.session:
@@ -548,30 +563,38 @@ def acciones_post(request):
             request.session['muestras_envio']=muestras_seleccionadas
             return redirect('agenda')
         elif 'destruir' in request.POST:
-            # Se marcan las muestras seleccionadas como destruidas
+            # Se marcan las muestras seleccionadas como destruidas con progreso
             if muestras_seleccionadas:
-                numero_muestras_destruidas = 0
-                muestras_a_destruir = Muestra.objects.filter(id__in=muestras_seleccionadas)
-                for sample in muestras_a_destruir:
-                    sample.estado_actual = 'DEST'
-                    sample.volumen_actual = 0
-                    sample.concentracion_actual = 0
-                    sample.save()
-                    # Liberar la subposición asociada
-                    if Subposicion.objects.filter(muestra=sample).exists():
-                        subposicion = Subposicion.objects.get(muestra=sample)
-                        subposicion.vacia = True
-                        subposicion.muestra = None
-                        subposicion.save()
-                    if Localizacion.objects.filter(muestra=sample).exists():
-                        # Actualizar todas las localizaciones de esta muestra
-                        Localizacion.objects.filter(muestra=sample).update(muestra=None)
-                    registro_destruccion = registro_destruido.objects.create(muestra = sample,
-                                                                             fecha = timezone.now(),
-                                                                             usuario = request.user)
-                    registro_destruccion.save()
-                    numero_muestras_destruidas += 1
-                messages.success(request, f'{numero_muestras_destruidas} muestras destruidas correctamente. ')
+                def gen_destruir():
+                    muestras_a_destruir = list(Muestra.objects.filter(id__in=muestras_seleccionadas))
+                    total = len(muestras_a_destruir)
+                    yield _progress_page_start('Destruyendo muestras', total)
+                    try:
+                        numero_muestras_destruidas = 0
+                        for i, sample in enumerate(muestras_a_destruir):
+                            sample.estado_actual = 'DEST'
+                            sample.volumen_actual = 0
+                            sample.concentracion_actual = 0
+                            sample.save()
+                            # Liberar la subposición asociada
+                            if Subposicion.objects.filter(muestra=sample).exists():
+                                subposicion = Subposicion.objects.get(muestra=sample)
+                                subposicion.vacia = True
+                                subposicion.muestra = None
+                                subposicion.save()
+                            if Localizacion.objects.filter(muestra=sample).exists():
+                                Localizacion.objects.filter(muestra=sample).update(muestra=None)
+                            registro_destruccion = registro_destruido.objects.create(muestra=sample,
+                                                                                     fecha=timezone.now(),
+                                                                                     usuario=request.user)
+                            registro_destruccion.save()
+                            numero_muestras_destruidas += 1
+                            if _should_update(i, total):
+                                yield _progress_update(i + 1, total)
+                        yield _progress_done('/muestras/', f'{numero_muestras_destruidas} muestras destruidas correctamente')
+                    except Exception as e:
+                        yield _progress_error(str(e), '/muestras/')
+                return StreamingHttpResponse(gen_destruir(), content_type='text/html')
         elif 'cambio_posicion' in request.POST:
             # Se redirigue al usuario a la vista de cambio de posición de muestras
             return redirect('cambio_posicion')
@@ -2397,93 +2420,112 @@ def editar_congelador(request,nombre_congelador):
 
 @permission_required('muestras.can_delete_localizaciones_web')
 def eliminar_localizacion(request):
-    # Vista para eliminar localizaciones, requiere permiso para eliminar localizaciones
-    posiciones_ocupadas = []
+    # Vista para eliminar localizaciones con progreso, requiere permiso para eliminar localizaciones
+    def gen_eliminar_loc():
+        posiciones_ocupadas = []
 
-    # Comprobar congeladores seleccionados: si cualquiera tiene subposiciones ocupadas, bloquear
-    congelador_ids = request.POST.getlist('congelador')
-    if congelador_ids:
-        for congelador_id in congelador_ids:
-            try:
-                cong = Congelador.objects.get(id=congelador_id)
-            except Congelador.DoesNotExist:
-                continue
-            if Subposicion.objects.filter(caja__rack__estante__congelador=cong, vacia=False).exists():
-                posiciones_ocupadas.append(f"Congelador {cong.congelador}")
+        congelador_ids = request.POST.getlist('congelador')
+        estante_ids = request.POST.getlist('estante')
+        rack_ids = request.POST.getlist('rack')
+        caja_ids = request.POST.getlist('caja')
+        subposicion_ids = request.POST.getlist('subposicion')
 
-    # Comprobar estantes seleccionados
-    estante_ids = request.POST.getlist('estante')
-    if estante_ids:
-        for estante_id in estante_ids:
-            try:
-                est = Estante.objects.get(id=estante_id)
-            except Estante.DoesNotExist:
-                continue
-            if Subposicion.objects.filter(caja__rack__estante=est, vacia=False).exists():
-                posiciones_ocupadas.append(f"Estante {est.numero}")
+        total_items = len(congelador_ids) + len(estante_ids) + len(rack_ids) + len(caja_ids) + len(subposicion_ids)
+        yield _progress_page_start('Eliminando posiciones', total_items)
 
-    # Verificar racks seleccionados
-    rack_ids = request.POST.getlist('rack')
-    if rack_ids:
-        for rack_id in rack_ids:
-            try:
-                rack = Rack.objects.get(id=rack_id)
-            except Rack.DoesNotExist:
-                continue
-            if Subposicion.objects.filter(caja__rack=rack, vacia=False).exists():
-                posiciones_ocupadas.append(f"Rack {rack.numero}")
+        try:
+            current = 0
 
-    # Verificar cajas seleccionadas
-    caja_ids = request.POST.getlist('caja')
-    if caja_ids:
-        for caja_id in caja_ids:
-            try:
-                caja = Caja.objects.get(id=caja_id)
-            except Caja.DoesNotExist:
-                continue
-            if Subposicion.objects.filter(caja=caja, vacia=False).exists():
-                posiciones_ocupadas.append(f"Caja {caja.numero}")
+            # Comprobar congeladores seleccionados
+            for congelador_id in congelador_ids:
+                try:
+                    cong = Congelador.objects.get(id=congelador_id)
+                except Congelador.DoesNotExist:
+                    current += 1
+                    continue
+                if Subposicion.objects.filter(caja__rack__estante__congelador=cong, vacia=False).exists():
+                    posiciones_ocupadas.append(f"Congelador {cong.congelador}")
+                current += 1
+                if _should_update(current - 1, total_items):
+                    yield _progress_update(current, total_items)
 
-    # Verificar subposiciones seleccionadas
-    subposicion_ids = request.POST.getlist('subposicion')
-    if subposicion_ids:
-        for subposicion_id in subposicion_ids:
-            try:
-                subposicion = Subposicion.objects.get(id=subposicion_id)
-            except Subposicion.DoesNotExist:
-                continue
-            if not subposicion.vacia:
-                posiciones_ocupadas.append(f"Subposición {subposicion.numero}")
+            # Comprobar estantes seleccionados
+            for estante_id in estante_ids:
+                try:
+                    est = Estante.objects.get(id=estante_id)
+                except Estante.DoesNotExist:
+                    current += 1
+                    continue
+                if Subposicion.objects.filter(caja__rack__estante=est, vacia=False).exists():
+                    posiciones_ocupadas.append(f"Estante {est.numero}")
+                current += 1
+                if _should_update(current - 1, total_items):
+                    yield _progress_update(current, total_items)
 
-    # Si hay posiciones ocupadas, mostrar error y no eliminar
-    if posiciones_ocupadas:
-        mensaje = f"No se pueden eliminar las siguientes posiciones porque están ocupadas: {', '.join(posiciones_ocupadas[:8])}"
-        if len(posiciones_ocupadas) > 8:
-            mensaje += f" y {len(posiciones_ocupadas) - 8} más."
-        messages.error(request, mensaje)
-        return redirect('localizaciones_todas')
+            # Verificar racks seleccionados
+            for rack_id in rack_ids:
+                try:
+                    rack = Rack.objects.get(id=rack_id)
+                except Rack.DoesNotExist:
+                    current += 1
+                    continue
+                if Subposicion.objects.filter(caja__rack=rack, vacia=False).exists():
+                    posiciones_ocupadas.append(f"Rack {rack.numero}")
+                current += 1
+                if _should_update(current - 1, total_items):
+                    yield _progress_update(current, total_items)
 
-    # Si no hay posiciones ocupadas, proceder con la eliminación (de abajo hacia arriba)
-    if subposicion_ids:
-        Subposicion.objects.filter(id__in=subposicion_ids).delete()
+            # Verificar cajas seleccionadas
+            for caja_id in caja_ids:
+                try:
+                    caja = Caja.objects.get(id=caja_id)
+                except Caja.DoesNotExist:
+                    current += 1
+                    continue
+                if Subposicion.objects.filter(caja=caja, vacia=False).exists():
+                    posiciones_ocupadas.append(f"Caja {caja.numero}")
+                current += 1
+                if _should_update(current - 1, total_items):
+                    yield _progress_update(current, total_items)
 
-    if caja_ids:
-        Caja.objects.filter(id__in=caja_ids).delete()
+            # Verificar subposiciones seleccionadas
+            for subposicion_id in subposicion_ids:
+                try:
+                    subposicion = Subposicion.objects.get(id=subposicion_id)
+                except Subposicion.DoesNotExist:
+                    current += 1
+                    continue
+                if not subposicion.vacia:
+                    posiciones_ocupadas.append(f"Subposición {subposicion.numero}")
+                current += 1
+                if _should_update(current - 1, total_items):
+                    yield _progress_update(current, total_items)
 
-    if rack_ids:
-        Rack.objects.filter(id__in=rack_ids).delete()
+            # Si hay posiciones ocupadas, mostrar error
+            if posiciones_ocupadas:
+                mensaje = f"No se pueden eliminar las siguientes posiciones porque están ocupadas: {', '.join(posiciones_ocupadas[:8])}"
+                if len(posiciones_ocupadas) > 8:
+                    mensaje += f" y {len(posiciones_ocupadas) - 8} más."
+                yield _progress_error(mensaje, '/archivo/')
+                return
 
-    if estante_ids:
-        Estante.objects.filter(id__in=estante_ids).delete()
+            # Proceder con la eliminación
+            if subposicion_ids:
+                Subposicion.objects.filter(id__in=subposicion_ids).delete()
+            if caja_ids:
+                Caja.objects.filter(id__in=caja_ids).delete()
+            if rack_ids:
+                Rack.objects.filter(id__in=rack_ids).delete()
+            if estante_ids:
+                Estante.objects.filter(id__in=estante_ids).delete()
+            if congelador_ids:
+                Congelador.objects.filter(id__in=congelador_ids).delete()
 
-    if congelador_ids:
-        Congelador.objects.filter(id__in=congelador_ids).delete()
+            yield _progress_done('/archivo/', f'{total_items} posiciones eliminadas correctamente')
+        except Exception as e:
+            yield _progress_error(str(e), '/archivo/')
 
-    messages.success(request, 'Posiciones eliminadas correctamente.')
-    return redirect('localizaciones_todas')
-
-    messages.success(request, 'Posiciones eliminadas correctamente.')
-    return redirect('localizaciones_todas')
+    return StreamingHttpResponse(gen_eliminar_loc(), content_type='text/html')
 
 
 def historial_localizaciones_muestra(request,muestra_id):
@@ -3051,45 +3093,64 @@ def añadir_muestras_estudio(request):
     if request.method == 'POST':
         # Obtener las muestras de la sesión
         muestras = request.session.get('muestras_estudio', [])
-        muestras=Muestra.objects.filter(id__in=muestras)
-        # Desasociar muestras de sus estudios si se selecciona esa opción
-        if len(request.POST.getlist('desasociar')) ==1:
-            for muestra in muestras:
-                if muestra.estado_actual != 'Destruida':
-                    muestra.estudio = None
-                    muestra.save()
-                    historial = historial_estudios.objects.create(
-                            muestra = muestra,
-                            estudio = None,
-                            fecha_asignacion = timezone.now(),
-                            usuario_asignacion = request.user
-                        )
-                    historial.save()
+        muestras = list(Muestra.objects.filter(id__in=muestras))
 
-            return redirect('muestras_todas')
+        # Desasociar muestras de sus estudios si se selecciona esa opción
+        if len(request.POST.getlist('desasociar')) == 1:
+            total = len(muestras)
+            def gen_desasociar():
+                yield _progress_page_start('Desasociando muestras del estudio', total)
+                try:
+                    for i, muestra in enumerate(muestras):
+                        if muestra.estado_actual != 'Destruida':
+                            muestra.estudio = None
+                            muestra.save()
+                            historial = historial_estudios.objects.create(
+                                muestra=muestra,
+                                estudio=None,
+                                fecha_asignacion=timezone.now(),
+                                usuario_asignacion=request.user
+                            )
+                            historial.save()
+                        if _should_update(i, total):
+                            yield _progress_update(i + 1, total)
+                    if 'muestras_estudio' in request.session:
+                        del request.session['muestras_estudio']
+                    yield _progress_done('/muestras/', f'{total} muestras desasociadas correctamente')
+                except Exception as e:
+                    yield _progress_error(str(e), '/muestras/')
+            return StreamingHttpResponse(gen_desasociar(), content_type='text/html')
+
         # Obtener los estudios seleccionados y asociar las muestras
         ids_estudios = request.POST.getlist('estudio_nombre')
-        for study in ids_estudios:
-            studio = Estudio.objects.get(nombre_estudio=study)
-            for muestra in muestras:
-                if muestra.estado_actual != 'Destruida':
-                    muestra.estudio = studio
-                    muestra.save()
-                    # Crear entrada en el historial de estudios si la muestra no estaba ya asociada a ese estudio
-                    if historial_estudios.objects.filter(muestra=muestra,estudio=studio).exists():
-                        pass
-                    else:   
-                        historial = historial_estudios.objects.create(
-                            muestra = muestra,
-                            estudio = studio,
-                            fecha_asignacion = timezone.now(),
-                            usuario_asignacion = request.user
-                        )
-                        historial.save()
-            messages.success(request,'Muestras añadidas correctamente a los estudios')
-        if 'muestras_estudio' in request.session:
-            del request.session['muestras_estudio']
-        return redirect('muestras_todas')
+        total = len(muestras) * len(ids_estudios)
+        def gen_asociar():
+            yield _progress_page_start('Asociando muestras al estudio', total)
+            try:
+                current = 0
+                for study in ids_estudios:
+                    studio = Estudio.objects.get(nombre_estudio=study)
+                    for muestra in muestras:
+                        if muestra.estado_actual != 'Destruida':
+                            muestra.estudio = studio
+                            muestra.save()
+                            if not historial_estudios.objects.filter(muestra=muestra, estudio=studio).exists():
+                                historial = historial_estudios.objects.create(
+                                    muestra=muestra,
+                                    estudio=studio,
+                                    fecha_asignacion=timezone.now(),
+                                    usuario_asignacion=request.user
+                                )
+                                historial.save()
+                        current += 1
+                        if _should_update(current - 1, total):
+                            yield _progress_update(current, total)
+                if 'muestras_estudio' in request.session:
+                    del request.session['muestras_estudio']
+                yield _progress_done('/muestras/', f'Muestras añadidas correctamente a los estudios')
+            except Exception as e:
+                yield _progress_error(str(e), '/muestras/')
+        return StreamingHttpResponse(gen_asociar(), content_type='text/html')
     return redirect('muestras_todas')
 
 def historial_estudios_muestra(request,muestra_id):

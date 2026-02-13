@@ -206,7 +206,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         <div class="action-row">
           <button type="button" class="btn btn-success"
-              onclick="location.href='{% url "exportar_congeladores" %}'">
+              onclick="descargarConProgreso('{% url 'exportar_congeladores' %}', 'Exportando congeladores')">
             📊⬇ Exportar
           </button>
 
@@ -223,7 +223,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         <div class="action-row">
           <button type="button" class="btn btn-danger" id="eliminar-btn" disabled
-              onclick="document.getElementById('eliminar-submit').click()">
+              onclick="if(confirm('¿Quieres eliminar las posiciones seleccionadas?')){document.getElementById('eliminar-submit').click();}">
             🗑 Eliminar posiciones
           </button>
         </div>
@@ -241,11 +241,95 @@ document.addEventListener('DOMContentLoaded', function() {
   {%csrf_token%}
 
   <!-- Botón oculto para submit del formulario de eliminar -->
-  <button type="submit" id="eliminar-submit" name="eliminar" style="display:none;"
-      onclick="return confirm('¿Quieres eliminar las posiciones seleccionadas?')"></button>
+  <button type="submit" id="eliminar-submit" name="eliminar" style="display:none;"></button>
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
+  // ===================== OVERLAY DE PROGRESO =====================
+  function mostrarProgreso(texto) {
+    // Eliminar overlay anterior si existe
+    const prev = document.getElementById('progreso-overlay');
+    if (prev) prev.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'progreso-overlay';
+    overlay.innerHTML = `
+      <div class="progreso-popup">
+        <h2>${texto}</h2>
+        <div class="progreso-bar-wrapper">
+          <div class="progreso-bar" id="progreso-bar"></div>
+        </div>
+        <p class="progreso-info" id="progreso-txt"><span class="progreso-spinner"></span>Procesando...</p>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    // Iniciar animación de la barra (indeterminada)
+    let width = 0;
+    const bar = document.getElementById('progreso-bar');
+    window._progresoInterval = setInterval(() => {
+      if (width < 85) {
+        width += Math.random() * 8 + 2;
+        if (width > 85) width = 85;
+        bar.style.width = width + '%';
+        bar.textContent = Math.round(width) + '%';
+      }
+    }, 400);
+  }
+
+  function cerrarProgreso(exito, mensaje) {
+    clearInterval(window._progresoInterval);
+    const bar = document.getElementById('progreso-bar');
+    const txt = document.getElementById('progreso-txt');
+    const overlay = document.getElementById('progreso-overlay');
+    if (!bar || !overlay) return;
+    bar.style.width = '100%';
+    bar.textContent = '100%';
+    bar.classList.add('done');
+    if (txt) txt.innerHTML = mensaje || '¡Completado!';
+    setTimeout(() => {
+      overlay.style.transition = 'opacity 0.4s ease';
+      overlay.style.opacity = '0';
+      setTimeout(() => overlay.remove(), 400);
+    }, 800);
+  }
+
+  // Para detectar fin de descarga de archivos
+  function descargarConProgreso(url, texto) {
+    mostrarProgreso(texto);
+    // Añadir cookie marker a la URL
+    const separator = url.includes('?') ? '&' : '?';
+    const downloadUrl = url + separator + 'download_token=' + Date.now();
+    
+    // Usar fetch para detectar cuando la descarga termine
+    fetch(downloadUrl)
+      .then(response => {
+        if (!response.ok) throw new Error('Error en la descarga');
+        return response.blob().then(blob => ({ blob, response }));
+      })
+      .then(({ blob, response }) => {
+        // Crear enlace de descarga
+        const a = document.createElement('a');
+        const url = window.URL.createObjectURL(blob);
+        a.href = url;
+        // Extraer nombre del archivo del header
+        const disposition = response.headers.get('Content-Disposition');
+        let filename = 'descarga.xlsx';
+        if (disposition) {
+          const match = disposition.match(/filename[^;=\n]*=(['"]?)([^'"\n]*)/i);
+          if (match && match[2]) filename = match[2];
+        }
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        a.remove();
+        cerrarProgreso(true, '¡Descarga completada!');
+      })
+      .catch(() => {
+        cerrarProgreso(false, 'Error en la descarga');
+      });
+  }
   function obtenerTodosCheckboxes() {
     return document.querySelectorAll('input[type="checkbox"][name="congelador"], input[type="checkbox"][name="estante"], input[type="checkbox"][name="rack"], input[type="checkbox"][name="caja"], input[type="checkbox"][name="subposicion"]');
   }
@@ -292,7 +376,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const ids = Array.from(checkboxesCongelador).map(cb => cb.value);
     if (ids.length === 0) return;
     const params = ids.map(id => 'congelador=' + encodeURIComponent(id)).join('&');
-    window.location.href = '{% url "exportar_posiciones_libres" %}?' + params;
+    descargarConProgreso('{% url "exportar_posiciones_libres" %}?' + params, 'Exportando posiciones libres');
   }
 
   function exportarSeleccionadas() {
@@ -300,7 +384,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const ids = Array.from(checkboxesCongelador).map(cb => cb.value);
     if (ids.length === 0) return;
     const params = ids.map(id => 'congelador=' + encodeURIComponent(id)).join('&');
-    window.location.href = '{% url "exportar_congeladores_seleccionados" %}?' + params;
+    descargarConProgreso('{% url "exportar_congeladores_seleccionados" %}?' + params, 'Exportando seleccionadas');
   }
 
   // Collapsible panels
@@ -338,12 +422,49 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 </script>
 
+<style>
+  /* Overlay de progreso */
+  #progreso-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+    display: flex; justify-content: center; align-items: center;
+    z-index: 99999;
+    animation: progresoFadeIn 0.3s ease;
+  }
+  @keyframes progresoFadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes progresoSlideUp { from { opacity: 0; transform: translateY(30px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+  .progreso-popup {
+    background: white; border-radius: 14px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    padding: 36px 34px 30px; text-align: center;
+    max-width: 440px; width: 90%;
+    animation: progresoSlideUp 0.35s ease;
+  }
+  .progreso-popup h2 { color: #1a1a2e; margin-bottom: 22px; font-size: 18px; font-weight: 600; }
+  .progreso-bar-wrapper { background: #e9ecef; border-radius: 8px; height: 26px; overflow: hidden; margin-bottom: 10px; }
+  .progreso-bar {
+    background: linear-gradient(90deg, #4361ee, #3a0ca3); height: 100%; border-radius: 8px;
+    transition: width 0.3s ease; width: 0%;
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-size: 12px; font-weight: 700; min-width: 40px;
+  }
+  .progreso-bar.done { background: linear-gradient(90deg, #2dc653, #1b9e3e); }
+  .progreso-info { color: #555; font-size: 14px; margin-top: 10px; }
+  .progreso-spinner {
+    display: inline-block; width: 16px; height: 16px;
+    border: 2.5px solid #ddd; border-top-color: #4361ee; border-radius: 50%;
+    animation: progresoSpin 0.7s linear infinite; vertical-align: middle; margin-right: 6px;
+  }
+  @keyframes progresoSpin { to { transform: rotate(360deg); } }
+</style>
+
 {% if messages %}
  {% for message in messages %}
   <script>
       Swal.fire({
         title: '{{ message.tags|capfirst }}',
-        text: '{{ message }}',
+        text: '{{ message|escapejs }}',
         icon: '{{ message.tags }}',
         confirmButtonText: 'Aceptar'
       });
