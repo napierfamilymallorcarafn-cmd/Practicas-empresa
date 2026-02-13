@@ -809,7 +809,15 @@ function validarSeleccion(botonName, mensaje) {
   }
   
   if (confirm(mensaje)) {
-    document.getElementById('acciones-form').elements[botonName].click();
+    // Recoger datos del formulario y enviar por AJAX con progreso
+    const form = document.getElementById('acciones-form');
+    const formData = new FormData(form);
+    formData.append(botonName, 'true');
+    const titulos = {
+      'eliminar': 'Eliminando muestras',
+      'destruir': 'Destruyendo muestras'
+    };
+    accionConProgreso(form.action, formData, titulos[botonName] || 'Procesando');
     return true;
   }
   return false;
@@ -1024,10 +1032,90 @@ document.addEventListener('DOMContentLoaded', function() {
           <div class="progreso-bar" id="progreso-bar"></div>
         </div>
         <p class="progreso-info" id="progreso-txt"><span class="progreso-spinner"></span>Procesando...</p>
+        <p class="progreso-counter" id="progreso-cnt"></p>
       </div>
     `;
     document.body.appendChild(overlay);
+  }
 
+  function _actualizarBarraProgreso(current, total) {
+    const bar = document.getElementById('progreso-bar');
+    const txt = document.getElementById('progreso-txt');
+    const cnt = document.getElementById('progreso-cnt');
+    if (!bar) return;
+    const pct = total > 0 ? (current / total * 100) : 0;
+    bar.style.width = pct.toFixed(1) + '%';
+    bar.textContent = Math.round(pct) + '%';
+    if (txt) txt.innerHTML = '<span class="progreso-spinner"></span>Procesando registro ' + current + ' de ' + total;
+    if (cnt) cnt.textContent = current + ' / ' + total;
+  }
+
+  function cerrarProgreso(exito, mensaje) {
+    clearInterval(window._progresoInterval);
+    const bar = document.getElementById('progreso-bar');
+    const txt = document.getElementById('progreso-txt');
+    const cnt = document.getElementById('progreso-cnt');
+    const overlay = document.getElementById('progreso-overlay');
+    if (!bar || !overlay) return;
+    bar.style.width = '100%';
+    bar.textContent = '100%';
+    bar.classList.add(exito ? 'done' : 'error');
+    if (txt) txt.innerHTML = mensaje || '¡Completado!';
+    if (cnt) cnt.textContent = '';
+    setTimeout(() => {
+      overlay.style.transition = 'opacity 0.4s ease';
+      overlay.style.opacity = '0';
+      setTimeout(() => overlay.remove(), 400);
+    }, 800);
+  }
+
+  // Acción con progreso real vía JSON streaming (no cambia de página)
+  async function accionConProgreso(url, formData, titulo) {
+    mostrarProgreso(titulo);
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        body: formData,
+        headers: { 'X-CSRFToken': formData.get('csrfmiddlewaretoken') }
+      });
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const data = JSON.parse(line);
+            if (data.status === 'processing' || data.status === 'start') {
+              _actualizarBarraProgreso(data.current, data.total);
+            } else if (data.status === 'done') {
+              _actualizarBarraProgreso(data.total, data.total);
+              cerrarProgreso(true, data.message || '¡Completado!');
+              setTimeout(() => location.reload(), 900);
+              return;
+            } else if (data.status === 'error') {
+              cerrarProgreso(false, data.message || 'Error en el proceso');
+              return;
+            }
+          } catch(e) { /* línea no parseable, ignorar */ }
+        }
+      }
+      // Si no hubo mensaje 'done' explícito, recargar
+      cerrarProgreso(true, '¡Completado!');
+      setTimeout(() => location.reload(), 900);
+    } catch (err) {
+      cerrarProgreso(false, 'Error de conexión: ' + err.message);
+    }
+  }
+
+  function descargarConProgreso(url, texto) {
+    mostrarProgreso(texto);
+    // Simular progreso para descargas
     let width = 0;
     const bar = document.getElementById('progreso-bar');
     window._progresoInterval = setInterval(() => {
@@ -1038,27 +1126,6 @@ document.addEventListener('DOMContentLoaded', function() {
         bar.textContent = Math.round(width) + '%';
       }
     }, 400);
-  }
-
-  function cerrarProgreso(exito, mensaje) {
-    clearInterval(window._progresoInterval);
-    const bar = document.getElementById('progreso-bar');
-    const txt = document.getElementById('progreso-txt');
-    const overlay = document.getElementById('progreso-overlay');
-    if (!bar || !overlay) return;
-    bar.style.width = '100%';
-    bar.textContent = '100%';
-    bar.classList.add('done');
-    if (txt) txt.innerHTML = mensaje || '¡Completado!';
-    setTimeout(() => {
-      overlay.style.transition = 'opacity 0.4s ease';
-      overlay.style.opacity = '0';
-      setTimeout(() => overlay.remove(), 400);
-    }, 800);
-  }
-
-  function descargarConProgreso(url, texto) {
-    mostrarProgreso(texto);
     fetch(url)
       .then(response => {
         if (!response.ok) throw new Error('Error en la descarga');
@@ -1125,7 +1192,9 @@ document.addEventListener('DOMContentLoaded', function() {
     color: white; font-size: 12px; font-weight: 700; min-width: 40px;
   }
   .progreso-bar.done { background: linear-gradient(90deg, #2dc653, #1b9e3e); }
+  .progreso-bar.error { background: linear-gradient(90deg, #e63946, #c1121f); }
   .progreso-info { color: #555; font-size: 14px; margin-top: 10px; }
+  .progreso-counter { color: #888; font-size: 12px; margin-top: 5px; }
   .progreso-spinner {
     display: inline-block; width: 16px; height: 16px;
     border: 2.5px solid #ddd; border-top-color: #4361ee; border-radius: 50%;

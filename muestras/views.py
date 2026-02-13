@@ -149,6 +149,14 @@ def _should_update(i, total, min_updates=80):
         return True
     step = max(1, total // min_updates)
     return (i + 1) % step == 0 or i + 1 == total
+
+
+# FUNCIONES AUXILIARES PARA PROGRESO AJAX (JSON streaming, sin cambiar de página)
+# ============================================================================
+
+def _json_progress(current, total, status='processing', message=''):
+    """Devuelve una línea JSON para el streaming AJAX."""
+    return json.dumps({'current': current, 'total': total, 'status': status, 'message': message}) + '\n'
 @login_required
 def principal(request):
     # Vista principal de la aplicación, muestra una página de bienvenida
@@ -532,12 +540,12 @@ def acciones_post(request):
                 request.session['muestras_estudio']=muestras_seleccionadas
                 return redirect('seleccionar_estudio')
         elif 'eliminar' in request.POST:
-            # Se eliminan las muestras seleccionadas con progreso
+            # Se eliminan las muestras seleccionadas con progreso AJAX
             if muestras_seleccionadas:
                 def gen_eliminar():
                     muestras_a_procesar = list(Muestra.objects.filter(id__in=muestras_seleccionadas))
                     total = len(muestras_a_procesar)
-                    yield _progress_page_start('Eliminando muestras', total)
+                    yield _json_progress(0, total, 'start')
                     try:
                         for i, muestra in enumerate(muestras_a_procesar):
                             if Subposicion.objects.filter(muestra=muestra).exists():
@@ -547,11 +555,11 @@ def acciones_post(request):
                                 subposicion.save()
                             muestra.delete()
                             if _should_update(i, total):
-                                yield _progress_update(i + 1, total)
-                        yield _progress_done('/muestras/', f'{total} muestras eliminadas correctamente')
+                                yield _json_progress(i + 1, total, 'processing')
+                        yield _json_progress(total, total, 'done', f'{total} muestras eliminadas correctamente')
                     except Exception as e:
-                        yield _progress_error(str(e), '/muestras/')
-                return StreamingHttpResponse(gen_eliminar(), content_type='text/html')
+                        yield _json_progress(0, total, 'error', str(e))
+                return StreamingHttpResponse(gen_eliminar(), content_type='application/x-ndjson')
         elif 'envio' in request.POST:
             # Se guardan las muestras seleccionadas en la sesión y se redirigue al usuario a la agenda de envíos
             if 'muestras_envio' in request.session:
@@ -563,12 +571,12 @@ def acciones_post(request):
             request.session['muestras_envio']=muestras_seleccionadas
             return redirect('agenda')
         elif 'destruir' in request.POST:
-            # Se marcan las muestras seleccionadas como destruidas con progreso
+            # Se marcan las muestras seleccionadas como destruidas con progreso AJAX
             if muestras_seleccionadas:
                 def gen_destruir():
                     muestras_a_destruir = list(Muestra.objects.filter(id__in=muestras_seleccionadas))
                     total = len(muestras_a_destruir)
-                    yield _progress_page_start('Destruyendo muestras', total)
+                    yield _json_progress(0, total, 'start')
                     try:
                         numero_muestras_destruidas = 0
                         for i, sample in enumerate(muestras_a_destruir):
@@ -590,11 +598,11 @@ def acciones_post(request):
                             registro_destruccion.save()
                             numero_muestras_destruidas += 1
                             if _should_update(i, total):
-                                yield _progress_update(i + 1, total)
-                        yield _progress_done('/muestras/', f'{numero_muestras_destruidas} muestras destruidas correctamente')
+                                yield _json_progress(i + 1, total, 'processing')
+                        yield _json_progress(total, total, 'done', f'{numero_muestras_destruidas} muestras destruidas correctamente')
                     except Exception as e:
-                        yield _progress_error(str(e), '/muestras/')
-                return StreamingHttpResponse(gen_destruir(), content_type='text/html')
+                        yield _json_progress(0, total, 'error', str(e))
+                return StreamingHttpResponse(gen_destruir(), content_type='application/x-ndjson')
         elif 'cambio_posicion' in request.POST:
             # Se redirigue al usuario a la vista de cambio de posición de muestras
             return redirect('cambio_posicion')
@@ -2420,7 +2428,7 @@ def editar_congelador(request,nombre_congelador):
 
 @permission_required('muestras.can_delete_localizaciones_web')
 def eliminar_localizacion(request):
-    # Vista para eliminar localizaciones con progreso, requiere permiso para eliminar localizaciones
+    # Vista para eliminar localizaciones con progreso AJAX, requiere permiso para eliminar localizaciones
     def gen_eliminar_loc():
         posiciones_ocupadas = []
 
@@ -2431,7 +2439,7 @@ def eliminar_localizacion(request):
         subposicion_ids = request.POST.getlist('subposicion')
 
         total_items = len(congelador_ids) + len(estante_ids) + len(rack_ids) + len(caja_ids) + len(subposicion_ids)
-        yield _progress_page_start('Eliminando posiciones', total_items)
+        yield _json_progress(0, total_items, 'start')
 
         try:
             current = 0
@@ -2447,7 +2455,7 @@ def eliminar_localizacion(request):
                     posiciones_ocupadas.append(f"Congelador {cong.congelador}")
                 current += 1
                 if _should_update(current - 1, total_items):
-                    yield _progress_update(current, total_items)
+                    yield _json_progress(current, total_items, 'processing')
 
             # Comprobar estantes seleccionados
             for estante_id in estante_ids:
@@ -2460,7 +2468,7 @@ def eliminar_localizacion(request):
                     posiciones_ocupadas.append(f"Estante {est.numero}")
                 current += 1
                 if _should_update(current - 1, total_items):
-                    yield _progress_update(current, total_items)
+                    yield _json_progress(current, total_items, 'processing')
 
             # Verificar racks seleccionados
             for rack_id in rack_ids:
@@ -2473,7 +2481,7 @@ def eliminar_localizacion(request):
                     posiciones_ocupadas.append(f"Rack {rack.numero}")
                 current += 1
                 if _should_update(current - 1, total_items):
-                    yield _progress_update(current, total_items)
+                    yield _json_progress(current, total_items, 'processing')
 
             # Verificar cajas seleccionadas
             for caja_id in caja_ids:
@@ -2486,7 +2494,7 @@ def eliminar_localizacion(request):
                     posiciones_ocupadas.append(f"Caja {caja.numero}")
                 current += 1
                 if _should_update(current - 1, total_items):
-                    yield _progress_update(current, total_items)
+                    yield _json_progress(current, total_items, 'processing')
 
             # Verificar subposiciones seleccionadas
             for subposicion_id in subposicion_ids:
@@ -2499,14 +2507,14 @@ def eliminar_localizacion(request):
                     posiciones_ocupadas.append(f"Subposición {subposicion.numero}")
                 current += 1
                 if _should_update(current - 1, total_items):
-                    yield _progress_update(current, total_items)
+                    yield _json_progress(current, total_items, 'processing')
 
             # Si hay posiciones ocupadas, mostrar error
             if posiciones_ocupadas:
                 mensaje = f"No se pueden eliminar las siguientes posiciones porque están ocupadas: {', '.join(posiciones_ocupadas[:8])}"
                 if len(posiciones_ocupadas) > 8:
                     mensaje += f" y {len(posiciones_ocupadas) - 8} más."
-                yield _progress_error(mensaje, '/archivo/')
+                yield _json_progress(current, total_items, 'error', mensaje)
                 return
 
             # Proceder con la eliminación
@@ -2521,11 +2529,11 @@ def eliminar_localizacion(request):
             if congelador_ids:
                 Congelador.objects.filter(id__in=congelador_ids).delete()
 
-            yield _progress_done('/archivo/', f'{total_items} posiciones eliminadas correctamente')
+            yield _json_progress(total_items, total_items, 'done', f'{total_items} posiciones eliminadas correctamente')
         except Exception as e:
-            yield _progress_error(str(e), '/archivo/')
+            yield _json_progress(0, total_items, 'error', str(e))
 
-    return StreamingHttpResponse(gen_eliminar_loc(), content_type='text/html')
+    return StreamingHttpResponse(gen_eliminar_loc(), content_type='application/x-ndjson')
 
 
 def historial_localizaciones_muestra(request,muestra_id):
@@ -3089,7 +3097,7 @@ def seleccionar_estudio(request):
     return HttpResponse(template.render({'estudios':estudios},request))
 @permission_required('muestras.can_change_estudios_web')
 def añadir_muestras_estudio(request):
-    # Vista para añadir muestras a un estudio seleccionado
+    # Vista para añadir muestras a un estudio seleccionado (progreso AJAX)
     if request.method == 'POST':
         # Obtener las muestras de la sesión
         muestras = request.session.get('muestras_estudio', [])
@@ -3099,7 +3107,7 @@ def añadir_muestras_estudio(request):
         if len(request.POST.getlist('desasociar')) == 1:
             total = len(muestras)
             def gen_desasociar():
-                yield _progress_page_start('Desasociando muestras del estudio', total)
+                yield _json_progress(0, total, 'start')
                 try:
                     for i, muestra in enumerate(muestras):
                         if muestra.estado_actual != 'Destruida':
@@ -3113,19 +3121,19 @@ def añadir_muestras_estudio(request):
                             )
                             historial.save()
                         if _should_update(i, total):
-                            yield _progress_update(i + 1, total)
+                            yield _json_progress(i + 1, total, 'processing')
                     if 'muestras_estudio' in request.session:
                         del request.session['muestras_estudio']
-                    yield _progress_done('/muestras/', f'{total} muestras desasociadas correctamente')
+                    yield _json_progress(total, total, 'done', f'{total} muestras desasociadas correctamente')
                 except Exception as e:
-                    yield _progress_error(str(e), '/muestras/')
-            return StreamingHttpResponse(gen_desasociar(), content_type='text/html')
+                    yield _json_progress(0, total, 'error', str(e))
+            return StreamingHttpResponse(gen_desasociar(), content_type='application/x-ndjson')
 
         # Obtener los estudios seleccionados y asociar las muestras
         ids_estudios = request.POST.getlist('estudio_nombre')
         total = len(muestras) * len(ids_estudios)
         def gen_asociar():
-            yield _progress_page_start('Asociando muestras al estudio', total)
+            yield _json_progress(0, total, 'start')
             try:
                 current = 0
                 for study in ids_estudios:
@@ -3144,13 +3152,13 @@ def añadir_muestras_estudio(request):
                                 historial.save()
                         current += 1
                         if _should_update(current - 1, total):
-                            yield _progress_update(current, total)
+                            yield _json_progress(current, total, 'processing')
                 if 'muestras_estudio' in request.session:
                     del request.session['muestras_estudio']
-                yield _progress_done('/muestras/', f'Muestras añadidas correctamente a los estudios')
+                yield _json_progress(total, total, 'done', 'Muestras añadidas correctamente a los estudios')
             except Exception as e:
-                yield _progress_error(str(e), '/muestras/')
-        return StreamingHttpResponse(gen_asociar(), content_type='text/html')
+                yield _json_progress(0, total, 'error', str(e))
+        return StreamingHttpResponse(gen_asociar(), content_type='application/x-ndjson')
     return redirect('muestras_todas')
 
 def historial_estudios_muestra(request,muestra_id):

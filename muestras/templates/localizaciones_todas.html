@@ -223,7 +223,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         <div class="action-row">
           <button type="button" class="btn btn-danger" id="eliminar-btn" disabled
-              onclick="if(confirm('¿Quieres eliminar las posiciones seleccionadas?')){document.getElementById('eliminar-submit').click();}">
+              onclick="eliminarPosicionesAjax()">
             🗑 Eliminar posiciones
           </button>
         </div>
@@ -247,7 +247,6 @@ document.addEventListener('DOMContentLoaded', function() {
 <script>
   // ===================== OVERLAY DE PROGRESO =====================
   function mostrarProgreso(texto) {
-    // Eliminar overlay anterior si existe
     const prev = document.getElementById('progreso-overlay');
     if (prev) prev.remove();
 
@@ -260,11 +259,102 @@ document.addEventListener('DOMContentLoaded', function() {
           <div class="progreso-bar" id="progreso-bar"></div>
         </div>
         <p class="progreso-info" id="progreso-txt"><span class="progreso-spinner"></span>Procesando...</p>
+        <p class="progreso-counter" id="progreso-cnt"></p>
       </div>
     `;
     document.body.appendChild(overlay);
+  }
 
-    // Iniciar animación de la barra (indeterminada)
+  function _actualizarBarraProgreso(current, total) {
+    const bar = document.getElementById('progreso-bar');
+    const txt = document.getElementById('progreso-txt');
+    const cnt = document.getElementById('progreso-cnt');
+    if (!bar) return;
+    const pct = total > 0 ? (current / total * 100) : 0;
+    bar.style.width = pct.toFixed(1) + '%';
+    bar.textContent = Math.round(pct) + '%';
+    if (txt) txt.innerHTML = '<span class="progreso-spinner"></span>Procesando registro ' + current + ' de ' + total;
+    if (cnt) cnt.textContent = current + ' / ' + total;
+  }
+
+  function cerrarProgreso(exito, mensaje) {
+    clearInterval(window._progresoInterval);
+    const bar = document.getElementById('progreso-bar');
+    const txt = document.getElementById('progreso-txt');
+    const cnt = document.getElementById('progreso-cnt');
+    const overlay = document.getElementById('progreso-overlay');
+    if (!bar || !overlay) return;
+    bar.style.width = '100%';
+    bar.textContent = '100%';
+    bar.classList.add(exito ? 'done' : 'error');
+    if (txt) txt.innerHTML = mensaje || '¡Completado!';
+    if (cnt) cnt.textContent = '';
+    setTimeout(() => {
+      overlay.style.transition = 'opacity 0.4s ease';
+      overlay.style.opacity = '0';
+      setTimeout(() => overlay.remove(), 400);
+    }, 800);
+  }
+
+  // Acción con progreso real vía JSON streaming (no cambia de página)
+  async function accionConProgreso(url, formData, titulo) {
+    mostrarProgreso(titulo);
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        body: formData,
+        headers: { 'X-CSRFToken': formData.get('csrfmiddlewaretoken') }
+      });
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const data = JSON.parse(line);
+            if (data.status === 'processing' || data.status === 'start') {
+              _actualizarBarraProgreso(data.current, data.total);
+            } else if (data.status === 'done') {
+              _actualizarBarraProgreso(data.total, data.total);
+              cerrarProgreso(true, data.message || '¡Completado!');
+              setTimeout(() => location.reload(), 900);
+              return;
+            } else if (data.status === 'error') {
+              cerrarProgreso(false, data.message || 'Error en el proceso');
+              return;
+            }
+          } catch(e) { /* línea no parseable, ignorar */ }
+        }
+      }
+      cerrarProgreso(true, '¡Completado!');
+      setTimeout(() => location.reload(), 900);
+    } catch (err) {
+      cerrarProgreso(false, 'Error de conexión: ' + err.message);
+    }
+  }
+
+  function eliminarPosicionesAjax() {
+    const checkboxes = obtenerTodosCheckboxes();
+    const haySeleccionados = Array.from(checkboxes).some(cb => cb.checked);
+    if (!haySeleccionados) {
+      alert('Por favor selecciona al menos una posición');
+      return;
+    }
+    if (!confirm('¿Quieres eliminar las posiciones seleccionadas?')) return;
+    const form = document.getElementById('eliminar-form');
+    const formData = new FormData(form);
+    formData.append('eliminar', 'true');
+    accionConProgreso(form.action, formData, 'Eliminando posiciones');
+  }
+
+  function descargarConProgreso(url, texto) {
+    mostrarProgreso(texto);
     let width = 0;
     const bar = document.getElementById('progreso-bar');
     window._progresoInterval = setInterval(() => {
@@ -275,44 +365,17 @@ document.addEventListener('DOMContentLoaded', function() {
         bar.textContent = Math.round(width) + '%';
       }
     }, 400);
-  }
-
-  function cerrarProgreso(exito, mensaje) {
-    clearInterval(window._progresoInterval);
-    const bar = document.getElementById('progreso-bar');
-    const txt = document.getElementById('progreso-txt');
-    const overlay = document.getElementById('progreso-overlay');
-    if (!bar || !overlay) return;
-    bar.style.width = '100%';
-    bar.textContent = '100%';
-    bar.classList.add('done');
-    if (txt) txt.innerHTML = mensaje || '¡Completado!';
-    setTimeout(() => {
-      overlay.style.transition = 'opacity 0.4s ease';
-      overlay.style.opacity = '0';
-      setTimeout(() => overlay.remove(), 400);
-    }, 800);
-  }
-
-  // Para detectar fin de descarga de archivos
-  function descargarConProgreso(url, texto) {
-    mostrarProgreso(texto);
-    // Añadir cookie marker a la URL
     const separator = url.includes('?') ? '&' : '?';
     const downloadUrl = url + separator + 'download_token=' + Date.now();
-    
-    // Usar fetch para detectar cuando la descarga termine
     fetch(downloadUrl)
       .then(response => {
         if (!response.ok) throw new Error('Error en la descarga');
         return response.blob().then(blob => ({ blob, response }));
       })
       .then(({ blob, response }) => {
-        // Crear enlace de descarga
         const a = document.createElement('a');
-        const url = window.URL.createObjectURL(blob);
-        a.href = url;
-        // Extraer nombre del archivo del header
+        const blobUrl = window.URL.createObjectURL(blob);
+        a.href = blobUrl;
         const disposition = response.headers.get('Content-Disposition');
         let filename = 'descarga.xlsx';
         if (disposition) {
@@ -322,7 +385,7 @@ document.addEventListener('DOMContentLoaded', function() {
         a.download = filename;
         document.body.appendChild(a);
         a.click();
-        window.URL.revokeObjectURL(url);
+        window.URL.revokeObjectURL(blobUrl);
         a.remove();
         cerrarProgreso(true, '¡Descarga completada!');
       })
@@ -450,7 +513,9 @@ document.addEventListener('DOMContentLoaded', function() {
     color: white; font-size: 12px; font-weight: 700; min-width: 40px;
   }
   .progreso-bar.done { background: linear-gradient(90deg, #2dc653, #1b9e3e); }
+  .progreso-bar.error { background: linear-gradient(90deg, #e63946, #c1121f); }
   .progreso-info { color: #555; font-size: 14px; margin-top: 10px; }
+  .progreso-counter { color: #888; font-size: 12px; margin-top: 5px; }
   .progreso-spinner {
     display: inline-block; width: 16px; height: 16px;
     border: 2.5px solid #ddd; border-top-color: #4361ee; border-radius: 50%;
