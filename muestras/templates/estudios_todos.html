@@ -211,19 +211,6 @@ Lista de Estudios
               {% if perms.muestras.can_change_estudios_web %}
                 <a href="/estudios/{{estudio.id}}/editar" class="chip-detalle">✍ Editar</a>
               {% endif %}
-              {% if perms.muestras.can_delete_estudios_web %}
-                {% if estudio.num_muestras > 0 %}
-                  <a href="#"
-                    onclick="Swal.fire({title: 'No se puede eliminar', text: 'El estudio tiene muestras asociadas. Desasocia las muestras primero.', icon: 'warning', confirmButtonText: 'Aceptar'}); return false;"
-                    class="chip-detalle">
-                    🗑️ Eliminar
-                  </a>
-                {% else %}
-                  <a href="/estudios/{{estudio.id}}/eliminar" class="chip-detalle" onclick="return confirm('¿Quieres eliminar este estudio?')">
-                    🗑️ Eliminar
-                  </a>
-                {% endif %}
-              {% endif %}
             </td>
           </tr>
         {% endfor %}
