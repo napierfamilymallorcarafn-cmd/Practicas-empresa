@@ -565,20 +565,42 @@ def acciones_post(request):
                         yield _json_progress(0, total, 'error', str(e))
                 return StreamingHttpResponse(gen_eliminar(), content_type='application/x-ndjson')
         elif 'envio' in request.POST:
-            # Se guardan las muestras seleccionadas en la sesión y se redirigue al usuario a la agenda de envíos
+            # Se guardan las muestras seleccionadas en la sesión y se redirige al usuario a la agenda de envíos
             if 'muestras_envio' in request.session:
                 del request.session['muestras_envio']
-            for muestra in muestras_seleccionadas:
-                # Se eliminan las muestras destruidas de la lista de envío
-                if Muestra.objects.get(id=muestra).estado_actual == 'DEST':
-                    muestras_seleccionadas.remove(muestra)
-            request.session['muestras_envio']=muestras_seleccionadas
+
+            permitidas = []
+            bloqueadas = 0
+
+            for mid in muestras_seleccionadas:
+                estado = Muestra.objects.filter(id=mid).values_list('estado_actual', flat=True).first()
+                # Estados que NO pueden ir a envío
+                if estado in ('DEST', 'ENV', 'PENV'):
+                    bloqueadas += 1
+                else:
+                    permitidas.append(mid)
+
+            if not permitidas:
+                messages.error(
+                    request,
+                    "No puedes registrar envíos para muestras en estado Destruida (DEST), Enviada (ENV) o Pendiente de envío (PENV)."
+                )
+                return redirect('muestras_todas')
+
+            if bloqueadas:
+                messages.warning(
+                    request,
+                    f"Se han excluido {bloqueadas} muestra(s) por estar en estado DEST, ENV o PENV."
+                )
+
+            request.session['muestras_envio'] = permitidas
             return redirect('agenda')
         elif 'destruir' in request.POST:
-            # Se marcan las muestras seleccionadas como destruidas con progreso AJAX
             if muestras_seleccionadas:
                 def gen_destruir():
-                    muestras_a_destruir = list(Muestra.objects.filter(id__in=muestras_seleccionadas))
+                    qs = Muestra.objects.filter(id__in=muestras_seleccionadas)
+                    # solo las que NO estén ya destruidas
+                    muestras_a_destruir = list(qs.exclude(estado_actual='DEST'))
                     total = len(muestras_a_destruir)
                     yield _json_progress(0, total, 'start')
                     try:

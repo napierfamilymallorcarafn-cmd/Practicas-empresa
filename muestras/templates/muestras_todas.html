@@ -347,7 +347,6 @@ Lista de Muestras
 
     {% endif %}
     {% if perms.muestras.can_change_estudios_web %}
-      <button type="button" onclick="document.getElementById('acciones-form').elements['estudio'].click()" class="btn" id='estudio-btn' disabled>🧬 Añadir al estudio</button>
     {%endif%}
     {% if perms.muestras.can_change_muestras_web %}
       <button type="button" onclick="document.getElementById('acciones-form').elements['envio'].click()" class="btn btn-success" id='envio-btn'>📦 Registrar envío</button>
@@ -417,7 +416,7 @@ Lista de Muestras
 </form>
 -->
 
-
+<div id="muestras-ids" data-ids='{{ muestras_ids_json|escapejs }}'></div>
 
 <div class="table-container">
 
@@ -458,7 +457,7 @@ Lista de Muestras
  
   <tbody>
     {% for x in muestras_page %}
-   <tr class="{% if x.estado_actual == 'DISP' %}status-available{% elif x.estado_actual == 'PENV' %}status-processing{% elif x.estado_actual == 'DEST' %}status-destroyed{% else %}status-enviada{% endif %}">
+      <tr class="{% if x.estado_actual == 'DISP' %}status-available{% elif x.estado_actual == 'PENV' %}status-processing{% elif x.estado_actual == 'DEST' %}status-destroyed{% else %}status-enviada{% endif %}">
       <td><input type="checkbox" name="muestra_id" value ="{{x.id}}" class="form-control"> <a href="/muestras/detalles_muestra/{{x.nom_lab}}/editar" class="chip-detalle">
                         ✍ Editar
                     </a></td>
@@ -524,10 +523,10 @@ Lista de Muestras
         {{ x.lugar_procedencia }}
       {% endif %}
       </td>
-      <td class="wrap-text">
-      {%if x.estado_actual != None %}
-        {{ x.estado_actual }}
-      {% endif %}
+      <td class="wrap-text" data-estado="{{ x.estado_actual }}">
+        {% if x.estado_actual %}
+          {{ x.estado_actual }}
+        {% endif %}
       </td>
       <td>
       {% if x.estudio != None %}
@@ -620,7 +619,15 @@ Lista de Muestras
 
     <script language="JavaScript">
       // IDs de todas las muestras filtradas (para selección global)
-      var todasMuestrasIds = {{ muestras_ids_json|safe }};
+            var todasMuestrasIds = [];
+      try {
+        var elIds = document.getElementById('muestras-ids');
+        if (elIds && elIds.dataset.ids) {
+          todasMuestrasIds = JSON.parse(elIds.dataset.ids);
+        }
+      } catch (e) {
+        todasMuestrasIds = [];
+      }
       var seleccionGlobalActiva = false;
 
       function seleccionar_todo(valor) {
@@ -874,25 +881,57 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function actualizarEstadoBotones() {
+
   const checkboxes = document.querySelectorAll('input[type="checkbox"][name="muestra_id"]');
-  const hiddenGlobales = document.querySelectorAll('.global-hidden-muestra');
-  const botonesADesactivar = ['eliminar-btn', 'estudio-btn', 'destruir-btn', 'exportar-seleccionadas-btn'];
-  
-  const haySeleccionados = Array.from(checkboxes).some(cb => cb.checked) || hiddenGlobales.length > 0;
-  console.log('Checkboxes encontrados:', checkboxes.length);
-  console.log('Hay seleccionados:', haySeleccionados);
-  
-  botonesADesactivar.forEach(botonId => {
-    const boton = document.getElementById(botonId);
-    if (boton) {
-      if (haySeleccionados) {
-        boton.removeAttribute('disabled');
-      } else {
-        boton.setAttribute('disabled', 'disabled');
-      }
-      console.log(`Botón ${botonId}: ${haySeleccionados ? 'habilitado' : 'deshabilitado'}`);
-    }
+  const seleccionados = Array.from(checkboxes).filter(cb => cb.checked);
+
+  // Botones
+  const btnEnvio  = document.getElementById('envio-btn');
+  const btnCambio = document.getElementById('cambio_posicion-btn');
+  const btnDestruir = document.getElementById('destruir-btn');
+  const btnEliminar = document.getElementById('eliminar-btn');
+  const btnEstudio  = document.getElementById('estudio-btn');
+  const btnExportarSel = document.getElementById('exportar-seleccionadas-btn');
+
+  if (seleccionados.length === 0) {
+      // Si NO hay selección → todos deshabilitados
+      [btnEnvio, btnCambio, btnDestruir, btnEliminar, btnEstudio, btnExportarSel]
+        .forEach(btn => btn && btn.setAttribute('disabled', 'disabled'));
+      return;
+  }
+
+  // Obtener estados de muestras seleccionadas
+  const estados = seleccionados.map(cb => {
+      const fila = cb.closest('tr');
+      const celdaEstado = fila.querySelector('[data-estado]');
+      return celdaEstado ? celdaEstado.getAttribute('data-estado') : null;
   });
+
+  const contieneEstado = estado => estados.includes(estado);
+
+  // ACCIONES PROHIBIDAS
+  const deshabilitarEnvio =
+        contieneEstado('DEST') ||
+        contieneEstado('ENV')  ||
+        contieneEstado('PENV');
+
+  const deshabilitarCambio =
+        contieneEstado('DEST') ||
+        contieneEstado('ENV')  ||
+        contieneEstado('PENV');
+
+  const deshabilitarDestruir =
+        contieneEstado('DEST');  // ya está destruida
+
+  // ACCIONES PERMITIDAS SI…
+  if (btnEnvio)  btnEnvio.disabled  = deshabilitarEnvio;
+  if (btnCambio) btnCambio.disabled = deshabilitarCambio;
+  if (btnDestruir) btnDestruir.disabled = deshabilitarDestruir;
+
+  // Acciones estándar que ya tenías
+  if (btnEliminar) btnEliminar.disabled = false; // eliminar siempre es posible
+  if (btnEstudio) btnEstudio.disabled = false;
+  if (btnExportarSel) btnExportarSel.disabled = false;
 }
 
 document.addEventListener("DOMContentLoaded", function() {
