@@ -38,6 +38,7 @@ urlpatterns = [
     path('archivo/exportar_congeladores', views.exportar_congeladores, name="exportar_congeladores"),
     path('archivo/exportar_congeladores_seleccionados', views.exportar_congeladores_seleccionados, name="exportar_congeladores_seleccionados"),
     path('estudios/',views.estudios_todos, name='estudios_todos'),
+    path('estudios/acciones', views.acciones_estudios, name='acciones_estudios'),
     path('estudios/excel',views.excel_estudios, name='excel_estudios'),
     path('estudios/nuevo',views.nuevo_estudio, name='nuevo_estudio'),
     path('estudios/<int:id_estudio>', views.repositorio_estudio, name="repositorio_estudio"),

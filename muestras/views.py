@@ -2547,10 +2547,53 @@ def historial_localizaciones_muestra(request,muestra_id):
 @permission_required('muestras.can_view_estudios_web')
 def estudios_todos(request):
     # Vista para ver todos los estudios, los investigadores solo ven los suyos asociados
-    if request.user.groups.filter(name='Investigadores'):
+    if request.user.groups.filter(name='Investigadores').exists():
         queryset = Estudio.objects.filter(investigadores_asociados=request.user).annotate(num_muestras=Count('muestra'))
     else:
         queryset = Estudio.objects.all().annotate(num_muestras=Count('muestra'))
+
+    # Definición de campos filtrables
+    field_names = [
+        'referencia_estudio',
+        'nombre_estudio',
+        'descripcion_estudio',
+        'investigador_principal',
+    ]
+    field_names_readable = [
+        'Referencia del estudio',
+        'Nombre del estudio',
+        'Descripción / palabras clave',
+        'Investigador principal',
+    ]
+    field_names_readable_dict = {k: v for k, v in zip(field_names, field_names_readable)}
+
+    # Filtros por campo (multi-valor con ';' + icontains)
+    for field in field_names:
+        val = request.GET.get(field)
+        if val:
+            valores = [v.strip() for v in val.split(';') if v.strip()]
+            if valores:
+                q_filters = Q()
+                for valor in valores:
+                    q_filters |= Q(**{f"{field}__icontains": valor})
+                queryset = queryset.filter(q_filters)
+
+    # Filtros por rango de fechas (inicio/fin)
+    fecha_inicio_desde = request.GET.get('fecha_inicio_desde')
+    if fecha_inicio_desde:
+        queryset = queryset.filter(fecha_inicio_estudio__gte=fecha_inicio_desde)
+
+    fecha_inicio_hasta = request.GET.get('fecha_inicio_hasta')
+    if fecha_inicio_hasta:
+        queryset = queryset.filter(fecha_inicio_estudio__lte=fecha_inicio_hasta)
+
+    fecha_fin_desde = request.GET.get('fecha_fin_desde')
+    if fecha_fin_desde:
+        queryset = queryset.filter(fecha_fin_estudio__gte=fecha_fin_desde)
+
+    fecha_fin_hasta = request.GET.get('fecha_fin_hasta')
+    if fecha_fin_hasta:
+        queryset = queryset.filter(fecha_fin_estudio__lte=fecha_fin_hasta)
 
     # Búsqueda general (server-side)
     busqueda_general = request.GET.get('busqueda', '').strip()
@@ -2561,8 +2604,10 @@ def estudios_todos(request):
         q_busqueda |= Q(descripcion_estudio__icontains=busqueda_general)
         q_busqueda |= Q(investigador_principal__icontains=busqueda_general)
         queryset = queryset.filter(q_busqueda)
+    
 
     # Paginación
+    queryset = queryset.order_by('id')
     contador_total = queryset.count()
     items_por_pagina = request.GET.get('items_por_pagina', 25)
     if str(items_por_pagina) == 'todas':
@@ -2576,6 +2621,7 @@ def estudios_todos(request):
         except Exception:
             items_por_pagina = 25
         paginator = Paginator(queryset, items_por_pagina)
+
     numero_pagina = request.GET.get('page', 1)
     try:
         estudios_page = paginator.page(numero_pagina)
@@ -2584,17 +2630,41 @@ def estudios_todos(request):
     except EmptyPage:
         estudios_page = paginator.page(paginator.num_pages)
 
+    # Listas para los multiselect de filtros
+    opciones_referencias = (
+        Estudio.objects
+        .exclude(referencia_estudio__isnull=True)
+        .exclude(referencia_estudio__exact='')
+        .values_list('referencia_estudio', flat=True)
+        .distinct()
+        .order_by('referencia_estudio')
+    )
+
+    opciones_investigadores = (
+        Estudio.objects
+        .exclude(investigador_principal__isnull=True)
+        .exclude(investigador_principal__exact='')
+        .values_list('investigador_principal', flat=True)
+        .distinct()
+        .order_by('investigador_principal')
+    )
+
     template = loader.get_template('estudios_todos.html')
     context = {
         'estudios': estudios_page.object_list,
         'paginator': paginator,
-        'muestras_page': estudios_page,  # mantiene compatibilidad con la plantilla existente
+        'muestras_page': estudios_page,
         'contador_muestras': contador_total,
         'items_por_pagina': items_por_pagina,
         'busqueda': busqueda_general,
+        'opciones_referencias': opciones_referencias,
+        'opciones_investigadores': opciones_investigadores,
+        'field_names': field_names,
+        'field_names_readable_dict': field_names_readable_dict,
         'request': request,
     }
     return HttpResponse(template.render(context, request))
+
 @permission_required('muestras.can_add_estudios_web')
 def nuevo_estudio(request):
     # Vista para crear un nuevo estudio
@@ -2625,6 +2695,110 @@ def nuevo_estudio(request):
         form = EstudioForm()
     template = loader.get_template('nuevo_estudio.html')
     return HttpResponse(template.render({'form':form},request))
+@login_required
+@permission_required('muestras.can_change_estudios_web')
+def acciones_estudios(request):
+    """
+    Acciones masivas sobre estudios: exportar, eliminar, editar, documentación,
+    importar (redirección) y nuevo estudio (redirección).
+    """
+    if request.method == "POST":
+        estudios_seleccionados = request.POST.getlist('estudio_id')
+
+        # Exportar seleccionados a Excel
+        if 'exportar_seleccionados' in request.POST:
+            if not estudios_seleccionados:
+                messages.error(request, "No has seleccionado ningún estudio para exportar.")
+                return redirect('estudios_todos')
+
+            queryset = Estudio.objects.filter(id__in=estudios_seleccionados)
+            response = HttpResponse(
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            response['Content-Disposition'] = 'attachment; filename="estudios_seleccionados.xlsx"'
+
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Estudios"
+
+            headers = [
+                "ID",
+                "Referencia",
+                "Nombre",
+                "Descripción",
+                "Fecha inicio",
+                "Fecha fin",
+                "Investigador principal",
+            ]
+            for col, h in enumerate(headers, 1):
+                ws.cell(row=1, column=col).value = h
+
+            row_num = 2
+            for e in queryset:
+                ws.cell(row_num, 1).value = e.id
+                ws.cell(row_num, 2).value = e.referencia_estudio
+                ws.cell(row_num, 3).value = e.nombre_estudio
+                ws.cell(row_num, 4).value = e.descripcion_estudio
+                ws.cell(row_num, 5).value = str(e.fecha_inicio_estudio or "")
+                ws.cell(row_num, 6).value = str(e.fecha_fin_estudio or "")
+                ws.cell(row_num, 7).value = e.investigador_principal
+                row_num += 1
+
+            wb.save(response)
+            return response
+
+        # Eliminar (solo estudios sin muestras asociadas)
+        elif 'eliminar' in request.POST:
+            if not estudios_seleccionados:
+                messages.error(request, "No has seleccionado estudios para eliminar.")
+                return redirect('estudios_todos')
+
+            eliminados = 0
+            bloqueados = 0
+            for est_id in estudios_seleccionados:
+                estudio = Estudio.objects.filter(id=est_id).first()
+                if not estudio:
+                    continue
+                if Muestra.objects.filter(estudio=estudio).exists():
+                    bloqueados += 1
+                    continue
+                estudio.delete()
+                eliminados += 1
+
+            if eliminados:
+                messages.success(request, f"{eliminados} estudio(s) eliminado(s) correctamente.")
+            if bloqueados:
+                messages.error(request, f"{bloqueados} estudio(s) no se pudieron eliminar por tener muestras asociadas.")
+            return redirect('estudios_todos')
+
+        # Editar (requiere exactamente 1 seleccionado)
+        elif 'editar' in request.POST:
+            if len(estudios_seleccionados) != 1:
+                messages.error(request, "Selecciona exactamente un estudio para editarlo.")
+                return redirect('estudios_todos')
+            return redirect('editar_estudio', id_estudio=estudios_seleccionados[0])
+
+        # Documentación (requiere exactamente 1 seleccionado)
+        elif 'documentacion' in request.POST:
+            if len(estudios_seleccionados) != 1:
+                messages.error(request, "Selecciona exactamente un estudio para ver su documentación.")
+                return redirect('estudios_todos')
+            return redirect('repositorio_estudio', id_estudio=estudios_seleccionados[0])
+
+        # Importar (redirige)
+        elif 'importar' in request.POST:
+            return redirect('excel_estudios')
+
+        # Nuevo estudio (redirige)
+        elif 'nuevo_estudio' in request.POST:
+            return redirect('nuevo_estudio')
+
+        # Acción no reconocida
+        messages.error(request, "Acción no reconocida.")
+        return redirect('estudios_todos')
+
+    # Si no es POST, vuelve al listado
+    return redirect('estudios_todos')
 @permission_required('muestras.can_add_estudios_web')
 def excel_estudios(request):
     # Mostrar confirmación después de validación con progreso

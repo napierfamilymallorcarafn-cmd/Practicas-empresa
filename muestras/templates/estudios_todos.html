@@ -1,186 +1,239 @@
 {% extends "master.html" %}
 
 {% block title %}
-Lista de estudios del investigador
+Lista de Estudios
 {% endblock %}
 {% load static %}
 {% block content %}
-<!-- Página que muestra todos los estudios registrados en la base de datos -->
-<link rel ="stylesheet" href="{% static 'estudios_todos.css' %}">
-<div class="acciones-estudios">
-    <a href="/" class="accion-btn accion-secundaria">
-        ⬅ Volver al inicio
-    </a>
-{% if perms.muestras.can_add_estudios_web %}
-    <a href="/estudios/nuevo" class="accion-btn accion-primaria">
-        ➕ Nuevo estudio
-    </a>
-    <a href="/estudios/excel" class="accion-btn accion-primaria">
-        📤📄 Importar estudios
-    </a>
-{% endif %}
-</div>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-{% if messages %}
- {% for message in messages %}
-    <script>
-      Swal.fire({
-        title: '{{ message.tags|capfirst }}',
-        text: '{{ message }}',
-        icon: '{{ message.tags }}', // 'success', 'error', 'info', 'warning'
-        confirmButtonText: 'Aceptar'
-      });
-    </script>
-{% endfor %}
-{% endif %}
-<div class="table-container">
+<!-- Página que muestra todos los estudios con filtros y acciones masivas -->
+<link rel="stylesheet" href="{% static 'muestras_todas.css' %}">
+<link rel="stylesheet" href="{% static 'estudios_todos.css' %}">
 
+<style>
+  button[disabled], .btn.disabled {
+    opacity: 0.5 !important;
+    cursor: not-allowed !important;
+    pointer-events: none !important;
+  }
+  .accion-buttons { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .action-row { width: 100%; display: flex; gap: 10px; align-items: center; }
+  .multiselect-wrapper { position: relative; width: 100%; }
+  .multiselect-toggle { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; font-size: 14px; min-height: 34px; user-select: none; }
+  .multiselect-toggle:hover { border-color: #999; }
+  .multiselect-toggle .arrow { margin-left: 8px; font-size: 10px; }
+  .multiselect-dropdown { display: none; position: absolute; z-index: 1000; background: #fff; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); max-height: 220px; overflow-y: auto; width: 100%; min-width: 180px; }
+  .multiselect-wrapper.open .multiselect-dropdown { display: block; }
+  .multiselect-dropdown label { display: flex; align-items: center; padding: 5px 10px; cursor: pointer; font-size: 13px; gap: 6px; }
+  .multiselect-dropdown label:hover { background: #f0f4ff; }
+  .multiselect-dropdown input[type="checkbox"] { margin: 0; }
+  .multiselect-tags { display: flex; flex-wrap: wrap; gap: 3px; flex: 1; }
+  .multiselect-tag { background: #e0e7ff; color: #1a3d7c; padding: 1px 6px; border-radius: 3px; font-size: 12px; display: inline-flex; align-items: center; gap: 3px; }
+  .multiselect-tag-remove { cursor: pointer; font-weight: bold; font-size: 14px; line-height: 1; color: #1a3d7c; }
+  .multiselect-tag-remove:hover { color: #c00; }
+  .multiselect-placeholder { color: #999; }
+</style>
+
+<div class="collapsible">
+  <button class="collapsible-header">🔍 Filtros</button>
+  <div class="collapsible-content">
+    <div class="filter-panel">
+      <form action="" id="filter-form" method="GET">
+        <div class="filter-grid">
+
+          <!-- Grupo 1: Identificación -->
+          <div class="filter-field">
+            <label>Nombre del estudio</label>
+            <input type="text" name="nombre_estudio" value="{{ request.GET.nombre_estudio }}">
+          </div>
+
+          <div class="filter-field">
+            <label>Referencia del estudio</label>
+            <!-- Multiselect (usa opciones_referencias). Si no tienes, cambia a input text normal -->
+            <div class="multiselect-wrapper" data-name="referencia_estudio">
+              <input type="hidden" name="referencia_estudio" value="">
+              <div class="multiselect-toggle">
+                <span class="multiselect-tags"><span class="multiselect-placeholder">Seleccionar...</span></span>
+                <span class="arrow">▼</span>
+              </div>
+              <div class="multiselect-dropdown">
+                {% for ref in opciones_referencias %}
+                  <label><input type="checkbox" value="{{ ref }}">{{ ref }}</label>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+
+          <div class="filter-field">
+            <label>Investigador principal</label>
+            <!-- Multiselect (usa opciones_investigadores). Si no tienes, cambia a input text normal -->
+            <div class="multiselect-wrapper" data-name="investigador_principal">
+              <input type="hidden" name="investigador_principal" value="">
+              <div class="multiselect-toggle">
+                <span class="multiselect-tags"><span class="multiselect-placeholder">Seleccionar...</span></span>
+                <span class="arrow">▼</span>
+              </div>
+              <div class="multiselect-dropdown">
+                {% for inv in opciones_investigadores %}
+                  <label><input type="checkbox" value="{{ inv }}">{{ inv }}</label>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+
+          <div class="filter-row"></div>
+
+          <!-- Grupo 2: Texto libre -->
+          <div class="filter-field" style="grid-column: 1 / -1;">
+            <label>Descripción / palabras clave</label>
+            <input type="text" name="descripcion_estudio" value="{{ request.GET.descripcion_estudio }}">
+          </div>
+
+          <div class="filter-row"></div>
+
+          <!-- Grupo 3: Fechas -->
+          <div class="filter-field">
+            <label>Fecha inicio (desde)</label>
+            <input type="date" name="fecha_inicio_desde" value="{{ request.GET.fecha_inicio_desde }}">
+          </div>
+          <div class="filter-field">
+            <label>Fecha inicio (hasta)</label>
+            <input type="date" name="fecha_inicio_hasta" value="{{ request.GET.fecha_inicio_hasta }}">
+          </div>
+          <div class="filter-field">
+            <label>Fecha fin (desde)</label>
+            <input type="date" name="fecha_fin_desde" value="{{ request.GET.fecha_fin_desde }}">
+          </div>
+          <div class="filter-field">
+            <label>Fecha fin (hasta)</label>
+            <input type="date" name="fecha_fin_hasta" value="{{ request.GET.fecha_fin_hasta }}">
+          </div>
+
+        </div>
+
+        <div class="filter-buttons">
+          <button type="submit" class="btn btn-primary">🔎 Filtrar</button>
+          <a href="{% url 'estudios_todos' %}" class="btn btn-secondary">✖ Eliminar filtros</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% comment %} ========== ACCIONES (colapsable como en Muestras) ========== {% endcomment %}
+<div class="collapsible">
+  <button class="collapsible-header">⚙️ Acciones</button>
+  <div class="collapsible-content">
+    <div class="action-buttons">
+
+      <div class="action-row">
+        {% if perms.muestras.can_add_estudios_web %}
+          <a href="/estudios/nuevo" class="btn">➕ Nuevo estudio</a>
+          <a href="/estudios/excel" class="btn">📤📄 Importar estudios</a>
+        {% endif %}
+      </div>
+
+      <div class="action-row">
+        <!-- Exportar seleccionados (POST con progreso simulado si quieres) -->
+        <button type="button" id="exportar-estudios-seleccionados-btn" class="btn btn-success" disabled onclick="enviarAccionEstudios('exportar_seleccionados')">
+          📊✅ Exportar estudios seleccionados
+        </button>
+      </div>
+
+      <div class="action-row">
+        {% if perms.muestras.can_delete_estudios_web %}
+          <button type="button" onclick="validarSeleccionEstudios('eliminar', '¿Quieres eliminar los estudios seleccionados?')" class="btn btn-danger" id='eliminar-estudios-btn' disabled>🗑️ Eliminar seleccionados</button>
+        {% endif %}
+        {% if perms.muestras.can_change_estudios_web %}
+          <button type="button" onclick="enviarAccionEstudios('editar')" class="btn btn-success" id='editar-estudio-btn' disabled>✍ Editar (1)</button>
+          <button type="button" onclick="enviarAccionEstudios('documentacion')" class="btn btn-success" id='doc-estudio-btn' disabled>📄 Documentación (1)</button>
+        {% endif %}
+      </div>
+
+      <div class="action-row">
+        <input type="button" value="☑️ Seleccionar todo" onclick="seleccionarTodoEstudios(true)" class="btn btn-secondary">
+        <input type="button" value="☐ Deseleccionar" onclick="seleccionarTodoEstudios(false)" class="btn btn-secondary">
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- FORM principal de acciones, envuelve la tabla -->
+<form action="{% url 'acciones_estudios' %}" method="post" id="acciones-estudios-form">
+  {% csrf_token %}
+  <!-- Botones ocultos para acciones POST -->
+  <button type="submit" value="true" name="exportar_seleccionados" style="display:none;"></button>
+  <button type="submit" value="true" name="eliminar" style="display:none;"></button>
+  <button type="submit" value="true" name="editar" style="display:none;"></button>
+  <button type="submit" value="true" name="documentacion" style="display:none;"></button>
+  <button type="submit" value="true" name="importar" style="display:none;"></button>
+  <button type="submit" value="true" name="nuevo_estudio" style="display:none;"></button>
+
+  <div class="table-container">
     <!-- Buscador global (server-side) -->
     <div style="margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
-        <label for="busqueda-input" style="font-weight: 500; color: #333;">Buscar:</label>
-        <input type="text" id="busqueda-input" value="{{ busqueda|default:'' }}" placeholder="Escribe para buscar en todos los estudios..." style="padding: 8px 12px; border: 1px solid #dfe3e6; border-radius: 6px; font-size: 14px; width: 300px;">
-        <button type="button" onclick="ejecutarBusqueda()" class="btn btn-secondary" style="padding: 8px 14px;">🔍 Buscar</button>
-        {% if busqueda %}
-            <button type="button" onclick="limpiarBusqueda()" class="btn btn-secondary" style="padding: 8px 14px;">✖ Limpiar búsqueda</button>
-        {% endif %}
+      <label for="busqueda-input" style="font-weight: 500; color: #333;">Buscar:</label>
+      <input type="text" id="busqueda-input" value="{{ busqueda|default:'' }}" placeholder="Escribe para buscar en todos los estudios..." style="padding: 8px 12px; border: 1px solid #dfe3e6; border-radius: 6px; font-size: 14px; width: 300px;">
+      <button type="button" onclick="ejecutarBusqueda()" class="btn btn-secondary" style="padding: 8px 14px;">🔍 Buscar</button>
+      {% if busqueda %}
+        <button type="button" onclick="limpiarBusqueda()" class="btn btn-secondary" style="padding: 8px 14px;">✖ Limpiar búsqueda</button>
+      {% endif %}
     </div>
 
     <table class="styled-table">
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Referencia</th>
-                <th>Nombre</th>
-                <th class="wrap-text">Descripción</th>
-                <th>Inicio</th>
-                <th>Fin</th>
-                <th>Investigador principal</th>
-                <th>Acciones</th>
-            </tr>
-        </thead>
+      <thead>
+        <tr>
+          <th>Seleccionar</th>
+          <th>ID</th>
+          <th>Referencia</th>
+          <th>Nombre</th>
+          <th class="wrap-text">Descripción</th>
+          <th>Fecha inicio</th>
+          <th>Fecha fin</th>
+          <th>Investigador principal</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
 
-        <tbody>
+      <tbody>
         {% for estudio in estudios %}
-            <tr>
-                <td>{{ estudio.id }}</td>
-                <td>{{ estudio.referencia_estudio|default:"—" }}</td>
-
-                <td>{{ estudio.nombre_estudio }}</td>
-
-                <td class="wrap-text">
-                    {{ estudio.descripcion_estudio|default:"—" }}
-                </td>
-
-                <td data-sort="{{ estudio.fecha_inicio_estudio|date:'Y-m-d'|default:'' }}">{{ estudio.fecha_inicio_estudio|default:"—" }}</td>
-
-                <td data-sort="{{ estudio.fecha_fin_estudio|date:'Y-m-d'|default:'' }}">{{ estudio.fecha_fin_estudio|default:"—" }}</td>
-
-                <td>{{ estudio.investigador_principal|default:"—" }}</td>
-
-                <td>
-                    <a href="/estudios/{{estudio.id}}" class="chip-detalle">
-                        📄 Documentación
-                    </a>
-                    {% if perms.muestras.can_change_estudios_web %}
-                    <a href="/estudios/{{estudio.id}}/editar" class="chip-detalle">
-                        ✍ Editar
-                    </a>
-                    {% endif %}
-                    {% if perms.muestras.can_delete_estudios_web %}
-                    {% if estudio.num_muestras > 0 %}
-                    <a href="#" onclick="Swal.fire({title: 'No se puede eliminar', text: 'El estudio tiene muestras asociadas. Desasocia las muestras primero.', icon: 'warning', confirmButtonText: 'Aceptar'}); return false;" class="chip-detalle">
-                        🗑️ Eliminar
-                    </a>
-                    {% else %}
-                    <a href="/estudios/{{estudio.id}}/eliminar" class="chip-detalle" onclick="return confirm('¿Quieres eliminar este estudio?')">
-                        🗑️ Eliminar
-                    </a>
-                    {% endif %}
-                    {% endif %}
-                </td>
-            </tr>
+          <tr>
+            <td><input type="checkbox" name="estudio_id" value="{{ estudio.id }}" class="form-control" onchange="actualizarEstadoBotonesEstudios()"></td>
+            <td>{{ estudio.id }}</td>
+            <td>{{ estudio.referencia_estudio|default_if_none:"" }}</td>
+            <td>{{ estudio.nombre_estudio }}</td>
+            <td class="wrap-text">{{ estudio.descripcion_estudio|default_if_none:"" }}</td>
+            <td data-sort="{{ estudio.fecha_inicio_estudio|date:'Y-m-d'|default:'' }}">{{ estudio.fecha_inicio_estudio|default_if_none:"" }}</td>
+            <td data-sort="{{ estudio.fecha_fin_estudio|date:'Y-m-d'|default:'' }}">{{ estudio.fecha_fin_estudio|default_if_none:"" }}</td>
+            <td>{{ estudio.investigador_principal|default_if_none:"" }}</td>
+            <td>
+              <a href="/estudios/{{estudio.id}}" class="chip-detalle">📄 Documentación</a>
+              {% if perms.muestras.can_change_estudios_web %}
+                <a href="/estudios/{{estudio.id}}/editar" class="chip-detalle">✍ Editar</a>
+              {% endif %}
+              {% if perms.muestras.can_delete_estudios_web %}
+                {% if estudio.num_muestras > 0 %}
+                  <a href="#"
+                    onclick="Swal.fire({title: 'No se puede eliminar', text: 'El estudio tiene muestras asociadas. Desasocia las muestras primero.', icon: 'warning', confirmButtonText: 'Aceptar'}); return false;"
+                    class="chip-detalle">
+                    🗑️ Eliminar
+                  </a>
+                {% else %}
+                  <a href="/estudios/{{estudio.id}}/eliminar" class="chip-detalle" onclick="return confirm('¿Quieres eliminar este estudio?')">
+                    🗑️ Eliminar
+                  </a>
+                {% endif %}
+              {% endif %}
+            </td>
+          </tr>
         {% endfor %}
-        </tbody>
+      </tbody>
     </table>
-</div>
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    const table = document.querySelector('.styled-table');
-    if (!table) return;
-    
-    const thead = table.querySelector('thead');
-    const tbody = table.querySelector('tbody');
-    const rows = Array.from(tbody.querySelectorAll('tr'));
-    
-    // Función de ordenamiento
-    const headers = thead.querySelectorAll('th');
-    const sortStates = {};
-    const dateKeywords = ['fecha', 'date', 'inicio', 'fin'];
-    
-    headers.forEach((header, index) => {
-        header.style.cursor = 'pointer';
-        header.style.userSelect = 'none';
-        sortStates[index] = 0;
-        header.classList.add('sorting');
-        
-        header.addEventListener('click', function() {
-            if (sortStates[index] === 0) {
-                sortStates[index] = 1;
-            } else {
-                sortStates[index] = sortStates[index] === 1 ? 2 : 1;
-            }
+  </div>
+</form>
 
-            headers.forEach((h, i) => {
-                if (i !== index) {
-                  h.classList.remove('sorting_asc', 'sorting_desc');
-                  h.classList.add('sorting');
-                  sortStates[i] = 0;
-                }
-            });
-
-            header.classList.remove('sorting', 'sorting_asc', 'sorting_desc');
-            if (sortStates[index] === 1) {
-                header.classList.add('sorting_asc');
-            } else if (sortStates[index] === 2) {
-                header.classList.add('sorting_desc');
-            } else {
-                header.classList.add('sorting');
-            }
-
-            sortTable(index, sortStates[index]);
-        });
-    });
-    
-    function sortTable(colIndex, direction) {
-        const sorted = [...rows].sort((a, b) => {
-            const cellA = a.cells[colIndex];
-            const cellB = b.cells[colIndex];
-            const aSort = cellA.getAttribute('data-sort');
-            const bSort = cellB.getAttribute('data-sort');
-            // Si las celdas tienen data-sort (fechas), usar ese valor
-            if (aSort !== null && bSort !== null) {
-                const aKey = aSort || '';
-                const bKey = bSort || '';
-                const cmp = aKey.localeCompare(bKey);
-                return direction === 1 ? cmp : -cmp;
-            }
-            const aVal = cellA.textContent.trim();
-            const bVal = cellB.textContent.trim();
-            const aNum = parseFloat(aVal);
-            const bNum = parseFloat(bVal);
-            if (!isNaN(aNum) && !isNaN(bNum)) {
-                return direction === 1 ? aNum - bNum : bNum - aNum;
-            }
-            return direction === 1 ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-        });
-        tbody.innerHTML = '';
-        sorted.forEach(row => tbody.appendChild(row));
-    }
-});
-</script>
 <!-- CONTROLES DE PAGINACIÓN -->
 <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
-  <!-- Selector de items por página -->
   <div style="display: flex; align-items: center; gap: 10px;">
     <label for="items-por-pagina" style="font-weight: 600; color: #333;">Items por página:</label>
     <form method="GET" style="display: inline; margin: 0;">
@@ -190,42 +243,39 @@ document.addEventListener('DOMContentLoaded', function() {
         {% endif %}
       {% endfor %}
       <select name="items_por_pagina" id="items-por-pagina" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" onchange="this.form.submit();">
-        <option value="10" {% if items_por_pagina == 10 %}selected{% endif %}>10</option>
-        <option value="25" {% if items_por_pagina == 25 %}selected{% endif %}>25</option>
-        <option value="50" {% if items_por_pagina == 50 %}selected{% endif %}>50</option>
+        <option value="10"  {% if items_por_pagina == 10 %}selected{% endif %}>10</option>
+        <option value="25"  {% if items_por_pagina == 25 %}selected{% endif %}>25</option>
+        <option value="50"  {% if items_por_pagina == 50 %}selected{% endif %}>50</option>
         <option value="100" {% if items_por_pagina == 100 %}selected{% endif %}>100</option>
         <option value="todas" {% if items_por_pagina == 'todas' %}selected{% endif %}>Todas</option>
       </select>
     </form>
   </div>
 
-  <!-- Información de página actual -->
   <div style="font-weight: 600; color: #333;">
     Página {{ muestras_page.number }} de {{ paginator.num_pages }} | Total: {{ contador_muestras }} estudio{{ contador_muestras|pluralize }}
   </div>
 
-  <!-- Controles de navegación -->
   <div style="display: flex; gap: 8px; align-items: center;">
     {% if muestras_page.has_previous %}
-      <a href="?page=1{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}" 
+      <a href="?page=1{% for key, value in request.GET.items %}{% if key != 'page' %}&amp;{{ key }}={{ value }}{% endif %}{% endfor %}"
          class="btn btn-secondary" style="padding: 8px 12px; font-size: 12px;">« Primera</a>
-      <a href="?page={{ muestras_page.previous_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}" 
+      <a href="?page={{ muestras_page.previous_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&amp;{{ key }}={{ value }}{% endif %}{% endfor %}"
          class="btn btn-secondary" style="padding: 8px 12px; font-size: 12px;">‹ Anterior</a>
     {% else %}
       <button class="btn btn-secondary" disabled style="padding: 8px 12px; font-size: 12px; opacity: 0.5;">« Primera</button>
       <button class="btn btn-secondary" disabled style="padding: 8px 12px; font-size: 12px; opacity: 0.5;">‹ Anterior</button>
     {% endif %}
 
-    <!-- Números de página -->
     <div style="display: flex; gap: 4px; align-items: center;">
       {% for num in paginator.page_range %}
         {% if num == muestras_page.number %}
           <span style="padding: 6px 10px; background: #1a3d7c; color: white; border-radius: 4px; font-weight: 600;">{{ num }}</span>
         {% elif num > muestras_page.number|add:'-3' and num < muestras_page.number|add:'3' %}
-          <a href="?page={{ num }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}" 
+          <a href="?page={{ num }}{% for key, value in request.GET.items %}{% if key != 'page' %}&amp;{{ key }}={{ value }}{% endif %}{% endfor %}"
              style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; text-decoration: none; color: #1a3d7c; background: white;">{{ num }}</a>
         {% elif num == 1 or num == paginator.num_pages %}
-          <a href="?page={{ num }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}" 
+          <a href="?page={{ num }}{% for key, value in request.GET.items %}{% if key != 'page' %}&amp;{{ key }}={{ value }}{% endif %}{% endfor %}"
              style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; text-decoration: none; color: #1a3d7c; background: white;">{{ num }}</a>
         {% elif num == muestras_page.number|add:'-3' or num == muestras_page.number|add:'3' %}
           <span style="padding: 0 4px;">...</span>
@@ -234,9 +284,9 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
 
     {% if muestras_page.has_next %}
-      <a href="?page={{ muestras_page.next_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}" 
+      <a href="?page={{ muestras_page.next_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&amp;{{ key }}={{ value }}{% endif %}{% endfor %}"
          class="btn btn-secondary" style="padding: 8px 12px; font-size: 12px;">Siguiente ›</a>
-      <a href="?page={{ paginator.num_pages }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}" 
+      <a href="?page={{ paginator.num_pages }}{% for key, value in request.GET.items %}{% if key != 'page' %}&amp;{{ key }}={{ value }}{% endif %}{% endfor %}"
          class="btn btn-secondary" style="padding: 8px 12px; font-size: 12px;">Última »</a>
     {% else %}
       <button class="btn btn-secondary" disabled style="padding: 8px 12px; font-size: 12px; opacity: 0.5;">Siguiente ›</button>
@@ -245,31 +295,208 @@ document.addEventListener('DOMContentLoaded', function() {
   </div>
 </div>
 
+<!--JS: Búsqueda global, Multiselects y Acciones-->
 <script>
 function ejecutarBusqueda() {
   var texto = document.getElementById('busqueda-input').value.trim();
   var params = new URLSearchParams(window.location.search);
-  if (texto) {
-    params.set('busqueda', texto);
-  } else {
-    params.delete('busqueda');
-  }
+  if (texto) { params.set('busqueda', texto); } else { params.delete('busqueda'); }
   params.delete('page');
   window.location.href = window.location.pathname + '?' + params.toString();
 }
 function limpiarBusqueda() {
   var params = new URLSearchParams(window.location.search);
-  params.delete('busqueda');
-  params.delete('page');
+  params.delete('busqueda'); params.delete('page');
   window.location.href = window.location.pathname + '?' + params.toString();
 }
+</script>
+
+<script>
 document.addEventListener('DOMContentLoaded', function() {
   var input = document.getElementById('busqueda-input');
   if (input) {
     input.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter') { e.preventDefault(); ejecutarBusqueda(); }
+      if (e.key === 'Enter') {
+        e.preventDefault();      // evita el submit del form de acciones
+        ejecutarBusqueda();      // lanza la búsqueda GET
+      }
     });
   }
 });
 </script>
-{%endblock%}
+
+<script>
+// ───── MULTISELECT DROPDOWNS (idéntico a Muestras, ajustado a campos de Estudios)
+document.addEventListener('DOMContentLoaded', function() {
+  var params = new URLSearchParams(window.location.search);
+
+  // Restaurar texto y fechas
+  var filterForm = document.getElementById('filter-form');
+  if (filterForm) {
+    filterForm.querySelectorAll('input[type="text"], input[type="date"]').forEach(function(input) {
+      var val = params.get(input.name);
+      if (val) input.value = val;
+    });
+  }
+
+  document.querySelectorAll('.multiselect-wrapper').forEach(function(wrapper) {
+    var name = wrapper.getAttribute('data-name');
+    var toggle = wrapper.querySelector('.multiselect-toggle');
+    var dropdown = wrapper.querySelector('.multiselect-dropdown');
+    var hiddenInput = wrapper.querySelector('input[type="hidden"]');
+    var tagsContainer = wrapper.querySelector('.multiselect-tags');
+    var checkboxes = dropdown.querySelectorAll('input[type="checkbox"]');
+
+    var currentVal = params.get(name) || '';
+    if (currentVal) {
+      var vals = currentVal.split(';');
+      checkboxes.forEach(function(cb) { if (vals.indexOf(cb.value) !== -1) cb.checked = true; });
+      hiddenInput.value = currentVal;
+    }
+
+    function renderTags() {
+      var selected = [];
+      checkboxes.forEach(function(cb) { if (cb.checked) selected.push({ value: cb.value, label: cb.parentElement.textContent.trim() }); });
+      tagsContainer.innerHTML = '';
+      if (selected.length === 0) {
+        tagsContainer.innerHTML = '<span class="multiselect-placeholder">Seleccionar...</span>';
+      } else {
+        selected.forEach(function(item) {
+          var tag = document.createElement('span');
+          tag.className = 'multiselect-tag';
+          tag.textContent = item.label;
+          var removeBtn = document.createElement('span');
+          removeBtn.className = 'multiselect-tag-remove';
+          removeBtn.textContent = '×';
+          removeBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            checkboxes.forEach(function(cb) { if (cb.value === item.value) cb.checked = false; });
+            updateValue();
+          });
+          tag.appendChild(removeBtn);
+          tagsContainer.appendChild(tag);
+        });
+      }
+    }
+
+    function updateValue() {
+      var vals = [];
+      checkboxes.forEach(function(cb) { if (cb.checked) vals.push(cb.value); });
+      hiddenInput.value = vals.join(';');
+      renderTags();
+    }
+
+    toggle.addEventListener('click', function(e) {
+      e.stopPropagation();
+      document.querySelectorAll('.multiselect-wrapper.open').forEach(function(other) { if (other !== wrapper) other.classList.remove('open'); });
+      wrapper.classList.toggle('open');
+    });
+
+    checkboxes.forEach(function(cb) { cb.addEventListener('change', updateValue); });
+
+    renderTags();
+  });
+
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('.multiselect-wrapper')) {
+      document.querySelectorAll('.multiselect-wrapper.open').forEach(function(w) { w.classList.remove('open'); });
+    }
+  });
+});
+</script>
+
+<script>
+// ───── COLAPSABLES (como en Muestras)
+document.addEventListener("DOMContentLoaded", function() {
+  const headers = document.querySelectorAll(".collapsible-header");
+  headers.forEach(header => {
+    header.addEventListener("click", function() {
+      const content = this.nextElementSibling;
+      this.classList.toggle("active");
+      if (content.style.maxHeight) { content.style.maxHeight = null; content.classList.remove("open"); }
+      else { content.style.maxHeight = content.scrollHeight + "px"; content.classList.add("open"); }
+    });
+  });
+
+  // Auto-abrir filtros si hay filtros activos
+  var params = new URLSearchParams(window.location.search);
+  var keys = ['nombre_estudio','referencia_estudio','descripcion_estudio','investigador_principal','fecha_inicio_desde','fecha_inicio_hasta','fecha_fin_desde','fecha_fin_hasta'];
+  var hayFiltros = keys.some(k => params.get(k));
+  if (hayFiltros) {
+    var filtroHeader = document.querySelectorAll('.collapsible-header')[0];
+    if (filtroHeader) {
+      filtroHeader.classList.add('active');
+      var filtroContent = filtroHeader.nextElementSibling;
+      filtroContent.style.maxHeight = filtroContent.scrollHeight + 'px';
+      filtroContent.classList.add('open');
+    }
+  }
+});
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+// ───── Acciones de Estudios: habilitar/deshabilitar botones según selección
+function getChecksEstudios() {
+  return Array.from(document.querySelectorAll('input[type="checkbox"][name="estudio_id"]'));
+}
+function seleccionarTodoEstudios(valor) {
+  getChecksEstudios().forEach(cb => cb.checked = valor);
+  actualizarEstadoBotonesEstudios();
+}
+function actualizarEstadoBotonesEstudios() {
+  const checks = getChecksEstudios();
+  const marcados = checks.filter(cb => cb.checked).length;
+  const btnExport = document.getElementById('exportar-estudios-seleccionados-btn');
+  const btnEliminar = document.getElementById('eliminar-estudios-btn');
+  const btnEditar  = document.getElementById('editar-estudio-btn');
+  const btnDoc     = document.getElementById('doc-estudio-btn');
+  if (btnExport) btnExport.disabled = (marcados === 0);
+  if (btnEliminar) btnEliminar.disabled = (marcados === 0);
+  if (btnEditar) btnEditar.disabled = (marcados !== 1);
+  if (btnDoc) btnDoc.disabled = (marcados !== 1);
+}
+function enviarAccionEstudios(nombreAccion) {
+  // Precondiciones: editar/doc requieren exactamente 1 seleccionado
+  const marcados = getChecksEstudios().filter(cb => cb.checked).length;
+  if ((nombreAccion === 'editar' || nombreAccion === 'documentacion') && marcados !== 1) {
+    Swal.fire({ title: 'Acción inválida', text: 'Selecciona exactamente un estudio.', icon: 'warning', confirmButtonText: 'Aceptar' });
+    return;
+  }
+  const form = document.getElementById('acciones-estudios-form');
+  form.elements[nombreAccion].click();
+}
+function validarSeleccionEstudios(nombreAccion, mensaje) {
+  const marcados = getChecksEstudios().filter(cb => cb.checked).length;
+  if (!marcados) {
+    Swal.fire({ title: 'Sin selección', text: 'Selecciona al menos un estudio.', icon: 'info', confirmButtonText: 'Aceptar' });
+    return false;
+  }
+  Swal.fire({
+    title: 'Confirmación',
+    text: mensaje,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: 'Sí, continuar',
+    cancelButtonText: 'Cancelar'
+  }).then((result) => {
+    if (result.isConfirmed) enviarAccionEstudios(nombreAccion);
+  });
+}
+document.addEventListener('DOMContentLoaded', actualizarEstadoBotonesEstudios);
+</script>
+
+{% if messages %}
+  {% for message in messages %}
+    <script>
+      Swal.fire({
+        title: '{{ message.tags|capfirst }}',
+        text: '{{ message|escapejs }}',
+        icon: '{{ message.tags }}',
+        confirmButtonText: 'Aceptar'
+      });
+    </script>
+  {% endfor %}
+{% endif %}
+
+{% endblock %}
