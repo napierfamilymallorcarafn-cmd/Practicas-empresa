@@ -119,7 +119,7 @@ Lista de Estudios
   </div>
 </div>
 
-{% comment %} ========== ACCIONES (colapsable como en Muestras) ========== {% endcomment %}
+{% comment %}  ACCIONES {% endcomment %}
 <div class="collapsible">
   <button class="collapsible-header">⚙️ Acciones</button>
   <div class="collapsible-content">
@@ -142,10 +142,6 @@ Lista de Estudios
       <div class="action-row">
         {% if perms.muestras.can_delete_estudios_web %}
           <button type="button" onclick="validarSeleccionEstudios('eliminar', '¿Quieres eliminar los estudios seleccionados?')" class="btn btn-danger" id='eliminar-estudios-btn' disabled>🗑️ Eliminar seleccionados</button>
-        {% endif %}
-        {% if perms.muestras.can_change_estudios_web %}
-          <button type="button" onclick="enviarAccionEstudios('editar')" class="btn btn-success" id='editar-estudio-btn' disabled>✍ Editar (1)</button>
-          <button type="button" onclick="enviarAccionEstudios('documentacion')" class="btn btn-success" id='doc-estudio-btn' disabled>📄 Documentación (1)</button>
         {% endif %}
       </div>
 

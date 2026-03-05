@@ -617,18 +617,18 @@ Lista de Muestras
   </div>
 </div>
 
-    <script language="JavaScript">
-      // IDs de todas las muestras filtradas (para selección global)
-            var todasMuestrasIds = [];
-      try {
-        var elIds = document.getElementById('muestras-ids');
-        if (elIds && elIds.dataset.ids) {
-          todasMuestrasIds = JSON.parse(elIds.dataset.ids);
-        }
-      } catch (e) {
-        todasMuestrasIds = [];
-      }
-      var seleccionGlobalActiva = false;
+<script>
+  // IDs de todas las muestras filtradas (para selección global)
+  var todasMuestrasIds = [];
+  try {
+    var elIds = document.getElementById('muestras-ids');
+    if (elIds && elIds.dataset.ids) {
+      todasMuestrasIds = JSON.parse(elIds.dataset.ids);
+    }
+  } catch (e) {
+    todasMuestrasIds = [];
+  }
+  var seleccionGlobalActiva = false;
 
       function seleccionar_todo(valor) {
         checkboxes = document.getElementsByTagName('input');
