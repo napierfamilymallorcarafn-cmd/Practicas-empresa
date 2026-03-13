@@ -272,10 +272,8 @@ Lista de Estudios
     style="display:none; width:100%; padding: 10px 15px; background: #d1ecf1; border: 1px solid #bee5eb; border-radius: 6px; color: #0c5460; font-size: 14px; margin-bottom: 15px;">
     <span id="banner-texto">Has seleccionado <strong id="seleccion-pagina-count"></strong> estudios de esta
       página.</span>
-    <a href="#" id="seleccionar-todos-global" style="font-weight: 600; margin-left: 8px;">Seleccionar los {{
-      contador_muestras }} estudios que coinciden con la búsqueda</a>
-    <span id="banner-global-activo" style="display:none;">Se han seleccionado los <strong>{{ contador_muestras
-        }}</strong> estudios. <a href="#" id="cancelar-seleccion-global"
+    <a href="#" id="seleccionar-todos-global" style="font-weight: 600; margin-left: 8px;">Seleccionar los {{ contador_muestras }} estudios que coinciden con la búsqueda</a>
+    <span id="banner-global-activo" style="display:none;">Se han seleccionado los <strong>{{ contador_muestras }}</strong> estudios. <a href="#" id="cancelar-seleccion-global"
         style="font-weight: 600; margin-left: 8px;">Cancelar</a></span>
   </div>
 
@@ -325,10 +323,8 @@ Lista de Estudios
           <td>{{ estudio.referencia_estudio|default_if_none:"" }}</td>
           <td>{{ estudio.nombre_estudio }}</td>
           <td class="wrap-text">{{ estudio.descripcion_estudio|default_if_none:"" }}</td>
-          <td data-sort="{{ estudio.fecha_inicio_estudio|date:'Y-m-d'|default:'' }}">{{
-            estudio.fecha_inicio_estudio|default_if_none:"" }}</td>
-          <td data-sort="{{ estudio.fecha_fin_estudio|date:'Y-m-d'|default:'' }}">{{
-            estudio.fecha_fin_estudio|default_if_none:"" }}</td>
+          <td data-sort="{{ estudio.fecha_inicio_estudio|date:'Y-m-d'|default:'' }}">{{ estudio.fecha_inicio_estudio|default_if_none:"" }}</td>
+          <td data-sort="{{ estudio.fecha_fin_estudio|date:'Y-m-d'|default:'' }}">{{ estudio.fecha_fin_estudio|default_if_none:"" }}</td>
           <td>{{ estudio.investigador_principal|default_if_none:"" }}</td>
         </tr>
         {% endfor %}
@@ -361,8 +357,7 @@ Lista de Estudios
   </div>
 
   <div style="font-weight: 600; color: #333;">
-    Página {{ muestras_page.number }} de {{ paginator.num_pages }} | Total: {{ contador_muestras }} estudio{{
-    contador_muestras|pluralize }}
+    Página {{ muestras_page.number }} de {{ paginator.num_pages }} | Total: {{ contador_muestras }} estudio{{ contador_muestras|pluralize }}
   </div>
 
   <div style="display: flex; gap: 8px; align-items: center;">
@@ -381,16 +376,14 @@ Lista de Estudios
     <div style="display: flex; gap: 4px; align-items: center;">
       {% for num in paginator.page_range %}
       {% if num == muestras_page.number %}
-      <span style="padding: 6px 10px; background: #1a3d7c; color: white; border-radius: 4px; font-weight: 600;">{{ num
-        }}</span>
+      <span style="padding: 6px 10px; background: #1a3d7c; color: white; border-radius: 4px; font-weight: 600;">{{ num }}</span>
       {% elif num > muestras_page.number|add:'-3' and num < muestras_page.number|add:'3' %} <a
         href="?page={{ num }}{% for key, value in request.GET.items %}{% if key != 'page' %}&amp;{{ key }}={{ value }}{% endif %}{% endfor %}"
         style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; text-decoration: none; color: #1a3d7c; background: white;">
         {{ num }}</a>
         {% elif num == 1 or num == paginator.num_pages %}
         <a href="?page={{ num }}{% for key, value in request.GET.items %}{% if key != 'page' %}&amp;{{ key }}={{ value }}{% endif %}{% endfor %}"
-          style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; text-decoration: none; color: #1a3d7c; background: white;">{{
-          num }}</a>
+          style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; text-decoration: none; color: #1a3d7c; background: white;">{{ num }}</a>
         {% elif num == muestras_page.number|add:'-3' or num == muestras_page.number|add:'3' %}
         <span style="padding: 0 4px;">...</span>
         {% endif %}
