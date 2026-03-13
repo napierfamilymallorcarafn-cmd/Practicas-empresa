@@ -569,6 +569,11 @@ def acciones_post(request):
             if 'muestras_envio' in request.session:
                 del request.session['muestras_envio']
 
+            # Permitir abrir el registro de envío sin selección previa
+            if not muestras_seleccionadas:
+                request.session['muestras_envio'] = []
+                return redirect('agenda')
+
             permitidas = []
             bloqueadas = 0
 
@@ -599,8 +604,8 @@ def acciones_post(request):
             if muestras_seleccionadas:
                 def gen_destruir():
                     qs = Muestra.objects.filter(id__in=muestras_seleccionadas)
-                    # solo las que NO estén ya destruidas
-                    muestras_a_destruir = list(qs.exclude(estado_actual='DEST'))
+                    # Solo se puede destruir si la muestra está Disponible (DISP) o Parcialmente enviada (PENV)
+                    muestras_a_destruir = list(qs.filter(estado_actual__in=['DISP', 'PENV']))
                     total = len(muestras_a_destruir)
                     yield _json_progress(0, total, 'start')
                     try:
@@ -618,9 +623,32 @@ def acciones_post(request):
                                 subposicion.save()
                             if Localizacion.objects.filter(muestra=sample).exists():
                                 Localizacion.objects.filter(muestra=sample).update(muestra=None)
-                            registro_destruccion = registro_destruido.objects.create(muestra=sample,
-                                                                                     fecha=timezone.now(),
-                                                                                     usuario=request.user)
+                            # Capturar datos del POST del modal
+                            motivo = request.POST.get('motivo_destruccion')
+                            metodo = request.POST.get('metodo_destruccion')
+                            lugar = request.POST.get('lugar_destruccion')
+                            responsable = request.POST.get('responsable_autoriza')
+                            tecnico = request.POST.get('tecnico_realiza')
+                            fecha_destruccion = request.POST.get('fecha_destruccion')
+                            observaciones = request.POST.get('observaciones_destruccion')
+                            
+                            try:
+                                from datetime import datetime
+                                date_obj = datetime.strptime(fecha_destruccion, '%Y-%m-%d').date()
+                            except (TypeError, ValueError):
+                                date_obj = timezone.now()
+
+                            registro_destruccion = registro_destruido.objects.create(
+                                muestra=sample,
+                                fecha=date_obj,
+                                usuario=request.user,
+                                motivo=motivo,
+                                metodo=metodo,
+                                lugar=lugar,
+                                responsable=responsable,
+                                tecnico=tecnico,
+                                observaciones=observaciones
+                            )
                             registro_destruccion.save()
                             numero_muestras_destruidas += 1
                             if _should_update(i, total):
@@ -631,6 +659,11 @@ def acciones_post(request):
                 return StreamingHttpResponse(gen_destruir(), content_type='application/x-ndjson')
         elif 'cambio_posicion' in request.POST:
             # Se redirigue al usuario a la vista de cambio de posición de muestras
+            # Permitir cambio de posición sin selección previa
+            if 'muestras_cambio_posicion' in request.session:
+                del request.session['muestras_cambio_posicion']
+            if not muestras_seleccionadas:
+                request.session['muestras_cambio_posicion'] = []
             return redirect('cambio_posicion')
         elif 'exportar_seleccionadas' in request.POST:
             # Exportar a Excel solo las muestras seleccionadas
@@ -944,8 +977,8 @@ def upload_excel(request):
 
                     return str(value).strip()
 
-                # Definir campos obligatorios para una muestra (solo nombre de laboratorio)
-                obligatorios = ["nom_lab"]
+                # Definir campos obligatorios para una muestra (ID muestra y Estado actual)
+                obligatorios = ["nom_lab", "estado_actual"]
 
                 cache = {
                     'subposiciones': {
