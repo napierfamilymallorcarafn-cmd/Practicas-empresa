@@ -349,8 +349,8 @@ Lista de Muestras
     {% if perms.muestras.can_change_estudios_web %}
     {%endif%}
     {% if perms.muestras.can_change_muestras_web %}
-      <button type="button" onclick="document.getElementById('acciones-form').elements['envio'].click()" class="btn btn-success" id='envio-btn'>📦 Registrar envío</button>
-      <button type="button" onclick="document.getElementById('acciones-form').elements['cambio_posicion'].click()" class="btn btn-success" id='cambio_posicion-btn'> 🔄 Cambio de posición</button>
+      <button type="button" onclick="accionEnvio()" class="btn btn-success" id='envio-btn'>📦 Registrar envío</button>
+      <button type="button" onclick="accionCambioPosicion()" class="btn btn-success" id='cambio_posicion-btn'> 🔄 Cambio de posición</button>
       <button type="button" onclick="document.getElementById('acciones-form').elements['estudio'].click()" class="btn btn-success" id='estudio-btn'> 📁 Añadir al estudio</button>
     {%endif%}
    </div>
@@ -1083,6 +1083,32 @@ function enviarFormularioDestruccion() {
 
     cerrarModalDestruccion();
     accionConProgreso(formAcciones.action, formData, 'Destruyendo muestras...');
+}
+
+// ACCIONES DIRECTAS: ENVÍO Y CAMBIO DE POSICIÓN
+function _buildFormDataAccionSimple(nombreAccion, titulo) {
+    const formAcciones = document.getElementById('acciones-form');
+    if (!formAcciones) return;
+
+    const formData = new FormData();
+    const csrf = formAcciones.querySelector('input[name="csrfmiddlewaretoken"]');
+    if (csrf && csrf.value) formData.append('csrfmiddlewaretoken', csrf.value);
+
+    // Añadir IDs seleccionados (checkboxes + selección global)
+    document.querySelectorAll('input[type="checkbox"][name="muestra_id"]:checked, .global-hidden-muestra[name="muestra_id"]').forEach(function (el) {
+        formData.append('muestra_id', el.value);
+    });
+
+    formData.append(nombreAccion, 'true');
+    accionConProgreso(formAcciones.action, formData, titulo);
+}
+
+function accionEnvio() {
+    _buildFormDataAccionSimple('envio', 'Preparando registro de envío...');
+}
+
+function accionCambioPosicion() {
+    _buildFormDataAccionSimple('cambio_posicion', 'Preparando cambio de posición...');
 }
 
 document.addEventListener("DOMContentLoaded", function() {
