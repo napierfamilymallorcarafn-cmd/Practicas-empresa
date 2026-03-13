@@ -21,6 +21,10 @@ class MuestraForm(forms.ModelForm):
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # ESTADO ACTUAL ES OBLIGATORIO
+        if 'estado_actual' in self.fields:
+            self.fields['estado_actual'].required = True
+        
         # Agregar validador a campos de texto que no deben contener ;
         text_fields = ['id_individuo', 'nom_lab', 'id_material', 'centro_procedencia', 
                       'lugar_procedencia', 'estado_actual', 'observaciones', 'estado_inicial']

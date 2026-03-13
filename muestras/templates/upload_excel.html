@@ -7,7 +7,7 @@ Importar archivo Excel
 
 <!-- Formulario para subir un archivo Excel con datos de muestras -->
 {% block content %}
-<link rel ="stylesheet" href="{% static 'forms.css' %}">
+<link rel ="stylesheet" href="{% static 'css/forms.css' %}">
 <div class="form-container">
 
     <!-- CABECERA -->
@@ -45,8 +45,8 @@ Importar archivo Excel
         </p>
 
         <ul class="requirements-list">
-            <li>Nombre asignado por el laboratorio (OBLIGATORIO)</li>
-
+            <li>Identificador de la muestra (ID muestra) (OBLIGATORIO)</li>
+            <li>Estado actual (OBLIGATORIO)</li>
         </ul>
 
         <p class="note">

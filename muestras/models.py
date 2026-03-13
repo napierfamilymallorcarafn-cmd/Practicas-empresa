@@ -214,6 +214,12 @@ class registro_destruido(models.Model):
     muestra = models.ForeignKey('Muestra',related_name="estado_destruido",on_delete=models.CASCADE)
     fecha = models.DateField(default = timezone.now)
     usuario = models.ForeignKey(User,on_delete=models.PROTECT, blank=True, null=True)
+    motivo = models.CharField(max_length=250, blank=True, null=True)
+    metodo = models.CharField(max_length=250, blank=True, null=True)
+    lugar = models.CharField(max_length=250, blank=True, null=True)
+    responsable = models.CharField(max_length=250, blank=True, null=True)
+    tecnico = models.CharField(max_length=250, blank=True, null=True)
+    observaciones = models.TextField(blank=True, null=True)
 class Estudio(models.Model):
     # Campos del modelo Estudio
     referencia_estudio = models.CharField(max_length=100, blank=True, null=True)

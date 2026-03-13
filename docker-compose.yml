@@ -1,11 +1,11 @@
 services:
   db:
-    image: mysql:8 # o mariadb:10.6
+    image: mysql:8.0.32  # o mariadb:10.6....
     container_name: django_mysql_db
     env_file: # Credenciales BD MySQL). Deben coincidir con settings.py de Django!
       - ./.env
     ports:
-      - "3306:3306" # Expone el puerto por defecto de MySQL (Opcional, útil para herramientas externas)
+      - "3307:3306" # El contenedor usa internamente el puerto 3306 para  MySQL, pero se expone el 3307 para acceder externamente (HeidiSQL, Dbeaver...)
     volumes:
       # Montar el script de inicialización
       - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql

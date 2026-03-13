@@ -7,8 +7,8 @@ Archivo de muestras
 {% block content %} 
 <!-- Página que muestra todas las localizaciones de las muestras en el archivo -->
 
-<link rel="stylesheet" href="{% static 'localizaciones_todas.css' %}">
-<script src="{% static 'mostrar.js' %}"></script>
+<link rel="stylesheet" href="{% static 'css/localizaciones_todas.css' %}">
+<script src="{% static 'js/localizaciones_todas.js' %}"></script>
 
 <style>
   button[disabled] {
@@ -25,10 +25,10 @@ Archivo de muestras
 </button>
 
 <!-- ========== PANEL DE FILTROS ========== -->
-<div class="collapsible">
+<div class="collapsible" style="border-radius: 8px; overflow: hidden;">
     <button class="collapsible-header">🔍 Filtros</button>
     <div class="collapsible-content">
-      <div class="filter-panel">
+      <div class="filter-panel" style="border-bottom-left-radius: 8px; border-bottom-right-radius: 8px;">
         <form action="" id="filter-form">
           <div class="filter-grid">
             <div class="filter-field">
@@ -191,10 +191,10 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 
 <!-- ========== PANEL DE ACCIONES ========== -->
-<div class="collapsible">
+<div class="collapsible" style="border-radius: 8px; overflow: hidden; margin-top: 15px;">
     <button class="collapsible-header">⚙️ Acciones</button>
     <div class="collapsible-content">
-      <div class="action-buttons">
+      <div class="action-buttons" style="border-bottom-left-radius: 8px; border-bottom-right-radius: 8px;">
 
         <div class="action-row">
           <button type="button"
