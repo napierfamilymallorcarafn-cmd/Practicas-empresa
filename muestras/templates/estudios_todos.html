@@ -351,11 +351,11 @@ Lista de Estudios
       <select name="items_por_pagina" id="items-por-pagina"
         style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;"
         onchange="this.form.submit();">
-        <option value="10" {% if items_por_pagina==10 %}selected{% endif %}>10</option>
-        <option value="25" {% if items_por_pagina==25 %}selected{% endif %}>25</option>
-        <option value="50" {% if items_por_pagina==50 %}selected{% endif %}>50</option>
-        <option value="100" {% if items_por_pagina==100 %}selected{% endif %}>100</option>
-        <option value="todas" {% if items_por_pagina=='todas' %}selected{% endif %}>Todas</option>
+        <option value="10" {% if items_por_pagina == 10 %}selected{% endif %}>10</option>
+        <option value="25" {% if items_por_pagina == 25 %}selected{% endif %}>25</option>
+        <option value="50" {% if items_por_pagina == 50 %}selected{% endif %}>50</option>
+        <option value="100" {% if items_por_pagina == 100 %}selected{% endif %}>100</option>
+        <option value="todas" {% if items_por_pagina == 'todas' %}selected{% endif %}>Todas</option>
       </select>
     </form>
   </div>
