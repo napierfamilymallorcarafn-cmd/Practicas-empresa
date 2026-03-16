@@ -375,19 +375,18 @@ Lista de Estudios
 
     <div style="display: flex; gap: 4px; align-items: center;">
       {% for num in paginator.page_range %}
-      {% if num == muestras_page.number %}
-      <span style="padding: 6px 10px; background: #1a3d7c; color: white; border-radius: 4px; font-weight: 600;">{{ num }}</span>
-      {% elif num > muestras_page.number|add:'-3' and num < muestras_page.number|add:'3' %} <a
-        href="?page={{ num }}{% for key, value in request.GET.items %}{% if key != 'page' %}&amp;{{ key }}={{ value }}{% endif %}{% endfor %}"
-        style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; text-decoration: none; color: #1a3d7c; background: white;">{{ num }}</a>
+        {% if num == muestras_page.number %}
+          <span style="padding: 6px 10px; background: #1a3d7c; color: white; border-radius: 4px; font-weight: 600;">{{ num }}</span>
+        {% elif num > muestras_page.number|add:'-3' and num < muestras_page.number|add:'3' %}
+          <a href="?page={{ num }}{% for key, value in request.GET.items %}{% if key != 'page' %}&amp;{{ key }}={{ value }}{% endif %}{% endfor %}"
+             style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; text-decoration: none; color: #1a3d7c; background: white;">{{ num }}</a>
+        {% elif num == 1 or num == paginator.num_pages %}
+          <a href="?page={{ num }}{% for key, value in request.GET.items %}{% if key != 'page' %}&amp;{{ key }}={{ value }}{% endif %}{% endfor %}"
+             style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; text-decoration: none; color: #1a3d7c; background: white;">{{ num }}</a>
         {% elif num == muestras_page.number|add:'-3' or num == muestras_page.number|add:'3' %}
-        <a href="?page={{ num }}{% for key, value in request.GET.items %}{% if key != 'page' %}&amp;{{ key }}={{ value }}{% endif %}{% endfor %}"
-          style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; text-decoration: none; color: #1a3d7c; background: white;">{{
-          num }}</a>
-        {% elif num == muestras_page.number|add:'-3' or num == muestras_page.number|add:'3' %}
-        <span style="padding: 0 4px;">...</span>
+          <span style="padding: 0 4px;">...</span>
         {% endif %}
-        {% endfor %}
+      {% endfor %}
     </div>
 
     {% if muestras_page.has_next %}

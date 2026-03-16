@@ -1,7 +1,7 @@
 from django.http import HttpResponse, FileResponse, JsonResponse, StreamingHttpResponse
 from .models import Muestra, Localizacion, Estudio, Envio, Documento, historial_estudios, historial_localizaciones,agenda_envio, registro_destruido, Congelador, Estante, Rack,Caja, Subposicion
 from django.template import loader
-from .forms import MuestraForm, UploadExcel, DocumentoForm, EstudioForm, Centroform, Congeladorform
+from .forms import MuestraForm, UploadExcel, DocumentoForm, EstudioForm, Centroform, Congeladorform, DestruirMuestrasForm
 from django.db import connection
 from django.db import transaction
 from django.contrib import messages  
@@ -578,61 +578,8 @@ def acciones_post(request):
             return redirect('agenda')
         elif 'destruir' in request.POST:
             if muestras_seleccionadas:
-                def gen_destruir():
-                    qs = Muestra.objects.filter(id__in=muestras_seleccionadas)
-                    # Solo se puede destruir si la muestra está Disponible (DISP) o Parcialmente enviada (PENV)
-                    muestras_a_destruir = list(qs.filter(estado_actual__in=['DISP', 'PENV']))
-                    total = len(muestras_a_destruir)
-                    yield _json_progress(0, total, 'start')
-                    try:
-                        numero_muestras_destruidas = 0
-                        for i, sample in enumerate(muestras_a_destruir):
-                            sample.estado_actual = 'DEST'
-                            sample.volumen_actual = 0
-                            sample.concentracion_actual = 0
-                            sample.save()
-                            # Liberar la subposición asociada
-                            if Subposicion.objects.filter(muestra=sample).exists():
-                                subposicion = Subposicion.objects.get(muestra=sample)
-                                subposicion.vacia = True
-                                subposicion.muestra = None
-                                subposicion.save()
-                            if Localizacion.objects.filter(muestra=sample).exists():
-                                Localizacion.objects.filter(muestra=sample).update(muestra=None)
-                            # Capturar datos del POST del modal
-                            motivo = request.POST.get('motivo_destruccion')
-                            metodo = request.POST.get('metodo_destruccion')
-                            lugar = request.POST.get('lugar_destruccion')
-                            responsable = request.POST.get('responsable_autoriza')
-                            tecnico = request.POST.get('tecnico_realiza')
-                            fecha_destruccion = request.POST.get('fecha_destruccion')
-                            observaciones = request.POST.get('observaciones_destruccion')
-                            
-                            try:
-                                from datetime import datetime
-                                date_obj = datetime.strptime(fecha_destruccion, '%Y-%m-%d').date()
-                            except (TypeError, ValueError):
-                                date_obj = timezone.now()
-
-                            registro_destruccion = registro_destruido.objects.create(
-                                muestra=sample,
-                                fecha=date_obj,
-                                usuario=request.user,
-                                motivo=motivo,
-                                metodo=metodo,
-                                lugar=lugar,
-                                responsable=responsable,
-                                tecnico=tecnico,
-                                observaciones=observaciones
-                            )
-                            registro_destruccion.save()
-                            numero_muestras_destruidas += 1
-                            if _should_update(i, total):
-                                yield _json_progress(i + 1, total, 'processing')
-                        yield _json_progress(total, total, 'done', f'{numero_muestras_destruidas} muestras destruidas correctamente')
-                    except Exception as e:
-                        yield _json_progress(0, total, 'error', str(e))
-                return StreamingHttpResponse(gen_destruir(), content_type='application/x-ndjson')
+                request.session['muestras_destruir'] = muestras_seleccionadas
+                return redirect('destruir_muestras')
         elif 'cambio_posicion' in request.POST:
             # Se redirigue al usuario a la vista de cambio de posición de muestras
             # Permitir cambio de posición sin selección previa
@@ -2584,6 +2531,77 @@ def eliminar_localizacion(request):
     return StreamingHttpResponse(gen_eliminar_loc(), content_type='application/x-ndjson')
 
 
+@login_required
+@permission_required('muestras.can_change_muestras_web')
+def destruir_muestras(request):
+    # Vista para destruir múltiples muestras con formulario detallado
+    if 'muestras_destruir' not in request.session:
+        messages.error(request, 'No hay muestras seleccionadas para destruir.')
+        return redirect('muestras_todas')
+    
+    muestras_ids = request.session['muestras_destruir']
+    qs = Muestra.objects.filter(id__in=muestras_ids)
+    # Solo se puede destruir si la muestra está Disponible (DISP) o Parcialmente enviada (PENV)
+    muestras_a_destruir = list(qs.filter(estado_actual__in=['DISP', 'PENV']))
+    
+    if not muestras_a_destruir:
+        messages.error(request, 'Ninguna de las muestras seleccionadas puede ser destruida (deben estar Disponible o Parcialmente enviada).')
+        del request.session['muestras_destruir']
+        return redirect('muestras_todas')
+    
+    if request.method == 'POST':
+        form = DestruirMuestrasForm(request.POST)
+        if form.is_valid():
+            # Procesar la destrucción
+            motivo = form.cleaned_data['motivo_destruccion']
+            metodo = form.cleaned_data['metodo_destruccion']
+            lugar = form.cleaned_data['lugar_destruccion']
+            responsable = form.cleaned_data['responsable_autoriza']
+            tecnico = form.cleaned_data['tecnico_realiza']
+            fecha_destruccion = form.cleaned_data['fecha_destruccion']
+            observaciones = form.cleaned_data['observaciones_destruccion']
+            
+            numero_muestras_destruidas = 0
+            for sample in muestras_a_destruir:
+                sample.estado_actual = 'DEST'
+                sample.volumen_actual = 0
+                sample.concentracion_actual = 0
+                sample.save()
+                # Liberar la subposición asociada
+                if Subposicion.objects.filter(muestra=sample).exists():
+                    subposicion = Subposicion.objects.get(muestra=sample)
+                    subposicion.vacia = True
+                    subposicion.muestra = None
+                    subposicion.save()
+                if Localizacion.objects.filter(muestra=sample).exists():
+                    Localizacion.objects.filter(muestra=sample).update(muestra=None)
+                # Registrar en trazabilidad
+                registro_destruido.objects.create(
+                    muestra=sample,
+                    fecha=fecha_destruccion,
+                    usuario=request.user,
+                    motivo=motivo,
+                    metodo=metodo,
+                    lugar=lugar,
+                    responsable=responsable,
+                    tecnico=tecnico,
+                    observaciones=observaciones
+                )
+                numero_muestras_destruidas += 1
+            
+            messages.success(request, f'{numero_muestras_destruidas} muestras destruidas correctamente.')
+            del request.session['muestras_destruir']
+            return redirect('muestras_todas')
+    else:
+        form = DestruirMuestrasForm()
+    
+    context = {
+        'form': form,
+        'muestras_a_destruir': muestras_a_destruir,
+    }
+    return render(request, 'destruir_muestras.html', context)
+
+
 def historial_localizaciones_muestra(request,muestra_id):
     # Vista para ver el historial de localizaciones de una muestra específica
     muestra = Muestra.objects.get(id=muestra_id)
@@ -2594,6 +2612,14 @@ def historial_localizaciones_muestra(request,muestra_id):
         estado_destruccion = None
     template = loader.get_template('historial_localizaciones.html')
     return HttpResponse(template.render({'historiales':historiales, 'muestra':muestra, 'estado_destruccion':estado_destruccion},request))
+
+
+def historial_destruccion(request, muestra_id):
+    # Vista para ver el historial de destrucción de una muestra específica
+    muestra = Muestra.objects.get(id=muestra_id)
+    registros = registro_destruido.objects.filter(muestra=muestra).order_by('-fecha', '-id')
+    template = loader.get_template('historial_destruccion.html')
+    return HttpResponse(template.render({'muestra': muestra, 'registros': registros}, request))
 
 # Vistas relacionadas con el modelo estudio
 @login_required

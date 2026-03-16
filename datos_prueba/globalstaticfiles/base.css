@@ -67,6 +67,12 @@
     background-color: #e8f0fe; /* azul claro de tu paleta */
 }
 
+.main-nav a.active {
+    background-color: #e8f0fe;
+    box-shadow: inset 0 0 0 2px #1a3d7c;
+    font-weight: 600;
+}
+
 .main-nav button {
     background-color: #1a3d7c;
     color: white;

@@ -1,0 +1,89 @@
+{% extends "master.html" %}
+
+{% block title %}
+Historial de destrucción
+{% endblock %}
+{% load static %}
+{% block content %}
+<link rel ="stylesheet" href="{% static 'css/muestras_todas.css' %}">
+<div class="form-container">
+
+    <!-- BARRA DE ACCIONES -->
+    <div class="acciones-estudios">
+        <a href="/muestras" class="accion-btn accion-secundaria">
+            ⬅ Volver a muestras
+        </a>
+    </div>
+
+    <!-- CABECERA -->
+    <div class="form-header">
+        <h1>🔥 Historial de destrucción</h1>
+        <p class="form-subtitle">
+            Muestra: <strong>{{ muestra.nom_lab }}</strong>
+        </p>
+    </div>
+
+    <!-- RESUMEN DE LA MUESTRA -->
+    <div class="form-card">
+        <h2>📋 Resumen de la muestra</h2>
+        <div class="detalle-grid">
+            <p>
+                <strong>Estado actual:</strong>
+                <span class="estado-chip estado-{{ muestra.estado_actual|lower }}">
+                    {{ muestra.estado_actual|default:"—" }}
+                </span>
+            </p>
+            <p>
+                <strong>Centro de procedencia:</strong>
+                {{ muestra.centro_procedencia|default:"—" }}
+            </p>
+            <p>
+                <strong>Llegada al laboratorio:</strong>
+                {{ muestra.fecha_llegada|default:"—" }}
+            </p>
+        </div>
+    </div>
+
+    <!-- HISTORIAL -->
+    <div class="form-card">
+        <h2>🧾 Registros de destrucción</h2>
+
+        <div class="table-container">
+            <table class="styled-table">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Usuario</th>
+                        <th class="wrap-text">Motivo</th>
+                        <th class="wrap-text">Método</th>
+                        <th class="wrap-text">Lugar</th>
+                        <th class="wrap-text">Responsable</th>
+                        <th class="wrap-text">Técnico</th>
+                        <th class="wrap-text">Observaciones</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                {% for reg in registros %}
+                    <tr class="status-destroyed">
+                        <td data-sort="{{ reg.fecha|date:'Y-m-d'|default:'' }}">{{ reg.fecha|default:"—" }}</td>
+                        <td>{{ reg.usuario.username|default:"—" }}</td>
+                        <td class="wrap-text">{{ reg.motivo|default:"—" }}</td>
+                        <td class="wrap-text">{{ reg.metodo|default:"—" }}</td>
+                        <td class="wrap-text">{{ reg.lugar|default:"—" }}</td>
+                        <td class="wrap-text">{{ reg.responsable|default:"—" }}</td>
+                        <td class="wrap-text">{{ reg.tecnico|default:"—" }}</td>
+                        <td class="wrap-text">{{ reg.observaciones|default:"—" }}</td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="8"><em>No hay registros de destrucción para esta muestra.</em></td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

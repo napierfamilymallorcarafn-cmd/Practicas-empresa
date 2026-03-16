@@ -112,3 +112,13 @@ class Congeladorform(forms.ModelForm):
                 if not isinstance(field.validators, list):
                     field.validators = list(field.validators)
                 field.validators.append(no_semicolon)
+
+class DestruirMuestrasForm(forms.Form):
+    motivo_destruccion = forms.CharField(max_length=250, required=True, label="Motivo de destrucción")
+    metodo_destruccion = forms.CharField(max_length=250, required=True, label="Método de destrucción")
+    lugar_destruccion = forms.CharField(max_length=250, required=True, label="Lugar de destrucción")
+    responsable_autoriza = forms.CharField(max_length=250, required=True, label="Responsable que autoriza")
+    tecnico_realiza = forms.CharField(max_length=250, required=True, label="Técnico que realiza")
+    fecha_destruccion = forms.DateField(required=True, label="Fecha de destrucción", widget=forms.DateInput(attrs={'type': 'date'}))
+    observaciones_destruccion = forms.CharField(widget=forms.Textarea, required=False, label="Otras observaciones")
+    confirmar_destruccion = forms.BooleanField(required=True, label="Confirmo que las muestras seleccionadas van a ser destruidas")

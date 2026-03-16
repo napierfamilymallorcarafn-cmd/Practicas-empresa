@@ -383,7 +383,7 @@ Lista de Muestras
       <button type="button" onclick="validarSeleccion('eliminar', '¿Quieres eliminar las muestras seleccionadas?')" class="btn btn-danger" id='eliminar-btn' disabled>🗑️ Eliminar seleccionadas</button>
       {%endif%}
       {% if perms.muestras.can_change_estudios_web %}
-      <button type="button" onclick="validarSeleccion('destruir', '¿Quieres actualizar el estado de las muestras seleccionadas a Destruida?')" class="btn btn-danger" id='destruir-btn' disabled>🔥 Destruir muestra</button>
+      <button type="submit" form="acciones-form" name="destruir" value="true" class="btn btn-danger" id='destruir-btn' disabled>🔥 Destruir muestra</button>
       {%endif%}
     </div>
 
@@ -438,56 +438,7 @@ Lista de Muestras
       {% endif %}
   </div>
 
-  <!-- MODAL DE DESTRUCCIÓN (sin <form> para evitar forms anidados) -->
-  <div id="destruccion-modal" style="display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; overflow:auto; background-color:rgba(0,0,0,0.5);">
-    <div style="background-color:#fefefe; margin:10% auto; padding:20px; border:1px solid #888; width:600px; border-radius:8px;">
-      <h2>⚠️ Registrar Destrucción de Muestras</h2>
-      <p>Estás a punto de destruir las muestras seleccionadas. Esta acción no se puede deshacer.</p>
 
-      <div id="destruccion-muestras-hidden"></div>
-
-      <div style="display:flex; flex-direction:column; gap:10px;">
-        <div>
-          <label><strong>Motivo de destrucción: *</strong></label>
-          <input type="text" id="motivo_destruccion" required style="width:100%; padding:5px;">
-        </div>
-        <div>
-          <label><strong>Método de destrucción: *</strong></label>
-          <input type="text" id="metodo_destruccion" required style="width:100%; padding:5px;">
-        </div>
-        <div>
-          <label><strong>Lugar de destrucción: *</strong></label>
-          <input type="text" id="lugar_destruccion" required style="width:100%; padding:5px;">
-        </div>
-        <div>
-          <label><strong>Responsable que autoriza: *</strong></label>
-          <input type="text" id="responsable_autoriza" required style="width:100%; padding:5px;">
-        </div>
-        <div>
-          <label><strong>Técnico que realiza: *</strong></label>
-          <input type="text" id="tecnico_realiza" required style="width:100%; padding:5px;">
-        </div>
-        <div>
-          <label><strong>Fecha de destrucción: *</strong></label>
-          <input type="date" id="fecha_destruccion" required style="width:100%; padding:5px;" value="{{ now|date:'Y-m-d' }}">
-        </div>
-        <div>
-          <label><strong>Otras observaciones:</strong></label>
-          <textarea id="observaciones_destruccion" style="width:100%; padding:5px;" rows="3"></textarea>
-        </div>
-
-        <div style="margin-top:10px; display:flex; gap:10px; align-items:center;">
-          <input type="checkbox" id="confirmar-destruccion-check" required>
-          <label for="confirmar-destruccion-check" style="color:red; font-weight:bold;">Confirmo que las muestras seleccionadas van a ser destruidas.</label>
-        </div>
-
-        <div style="margin-top:20px; text-align:right;">
-          <button type="button" class="btn btn-secondary" onclick="cerrarModalDestruccion()">Cancelar</button>
-          <button type="button" class="btn btn-danger" onclick="enviarFormularioDestruccion()">Confirmar Destrucción</button>
-        </div>
-      </div>
-    </div>
-  </div>
 
   <table class="styled-table">
     <thead>
@@ -510,6 +461,7 @@ Lista de Muestras
         <th>Estudio</th>
         <th class="wrap-text">Historial estudios</th>
         <th class="wrap-text">Historial envios</th>
+        <th class="wrap-text">Historial destrucción</th>
       </tr>
     </thead>
  
@@ -601,6 +553,13 @@ Lista de Muestras
       <a href="{% url 'historial_envios' x.id %}">Ver envios</a>
       {%else%}
       -
+      {% endif %}
+    </td>
+    <td class="wrap-text">
+      {% if x.estado_actual == 'DEST' %}
+        <a href="{% url 'historial_destruccion' x.id %}">Ver</a>
+      {% else %}
+        -
       {% endif %}
     </td>
     </tr>
@@ -991,105 +950,12 @@ function actualizarEstadoBotones() {
   if (btnCambio) btnCambio.disabled = deshabilitarCambio;
   if (btnDestruir) {
       btnDestruir.disabled = deshabilitarDestruir;
-      // Reemplazamos el onclick action original del formulario por abrir el modal
-      btnDestruir.onclick = function() {
-          abrirModalDestruccion();
-      }
   }
 
   // Acciones estándar que ya tenías
   if (btnEliminar) btnEliminar.disabled = false; // eliminar siempre es posible
   if (btnEstudio)     btnEstudio.disabled     = (seleccionados.length === 0);
   if (btnExportarSel) btnExportarSel.disabled = false;
-}
-
-// LOGICA DEL MODAL DE DESTRUCCION
-function abrirModalDestruccion() {
-    const modal = document.getElementById('destruccion-modal');
-    const container = document.getElementById('destruccion-muestras-hidden');
-    container.innerHTML = ''; // Limpiar
-    
-    // Obtener ids marcados
-    const checkboxes = document.querySelectorAll('input[type="checkbox"][name="muestra_id"]:checked');
-    checkboxes.forEach(cb => {
-        const input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = 'muestra_id';
-        input.value = cb.value;
-        container.appendChild(input);
-    });
-    
-    // Y los ocultos globales si estaban
-    const hiddenGlobales = document.querySelectorAll('input.global-hidden-muestra[name="muestra_id"]');
-    hiddenGlobales.forEach(hg => {
-        const input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = 'muestra_id';
-        input.value = hg.value;
-        container.appendChild(input);
-    });
-    
-    // Resetear inputs del modal y abrir
-    document.getElementById('motivo_destruccion').value = '';
-    document.getElementById('metodo_destruccion').value = '';
-    document.getElementById('lugar_destruccion').value = '';
-    document.getElementById('responsable_autoriza').value = '';
-    document.getElementById('tecnico_realiza').value = '';
-    const fecha = document.getElementById('fecha_destruccion');
-    if (fecha && !fecha.value) fecha.value = '{{ now|date:"Y-m-d" }}';
-    document.getElementById('observaciones_destruccion').value = '';
-    document.getElementById('confirmar-destruccion-check').checked = false;
-    modal.style.display = 'block';
-}
-
-function cerrarModalDestruccion() {
-    document.getElementById('destruccion-modal').style.display = 'none';
-}
-
-function enviarFormularioDestruccion() {
-    const confirmar = document.getElementById('confirmar-destruccion-check');
-    if (!confirmar || !confirmar.checked) {
-        alert('Debes confirmar la destrucción para continuar.');
-        return;
-    }
-
-    const motivo = document.getElementById('motivo_destruccion');
-    const metodo = document.getElementById('metodo_destruccion');
-    const lugar = document.getElementById('lugar_destruccion');
-    const responsable = document.getElementById('responsable_autoriza');
-    const tecnico = document.getElementById('tecnico_realiza');
-    const fecha = document.getElementById('fecha_destruccion');
-
-    const obligatorios = [motivo, metodo, lugar, responsable, tecnico, fecha];
-    const falta = obligatorios.some(el => !el || !String(el.value || '').trim());
-    if (falta) {
-        alert('Rellena todos los campos obligatorios (*) antes de continuar.');
-        return;
-    }
-
-    const formAcciones = document.getElementById('acciones-form');
-    const formData = new FormData();
-    const csrf = formAcciones ? formAcciones.querySelector('input[name="csrfmiddlewaretoken"]') : null;
-    if (csrf && csrf.value) formData.append('csrfmiddlewaretoken', csrf.value);
-    formData.append('destruir', 'true');
-
-    // Añadir IDs (visibles + globales) desde el contenedor ya poblado
-    document.querySelectorAll('#destruccion-muestras-hidden input[name="muestra_id"]').forEach(function (el) {
-        formData.append('muestra_id', el.value);
-    });
-
-    // Añadir datos de destrucción
-    formData.append('motivo_destruccion', motivo.value.trim());
-    formData.append('metodo_destruccion', metodo.value.trim());
-    formData.append('lugar_destruccion', lugar.value.trim());
-    formData.append('responsable_autoriza', responsable.value.trim());
-    formData.append('tecnico_realiza', tecnico.value.trim());
-    formData.append('fecha_destruccion', fecha.value);
-    const obs = document.getElementById('observaciones_destruccion');
-    if (obs && obs.value) formData.append('observaciones_destruccion', obs.value.trim());
-
-    cerrarModalDestruccion();
-    accionConProgreso(formAcciones.action, formData, 'Destruyendo muestras...');
 }
 
 function accionEstudio() {
