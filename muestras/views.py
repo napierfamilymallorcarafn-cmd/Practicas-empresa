@@ -261,8 +261,18 @@ def muestras_todas(request):
             # Separar por punto y coma (;) para permitir múltiples filtros
             valores = [v.strip() for v in val.split(';') if v.strip()]
             if valores:
+                # Para IDs (exact match)
+                if field in ['id_individuo', 'nom_lab']:
+                    q_filters = Q()
+                    for valor in valores:
+                        if valor == 'null':
+                            # Incluir tanto NULL como cadenas vacías
+                            q_filters |= Q(**{f"{field}__isnull": True}) | Q(**{f"{field}": ""})
+                        else:
+                            q_filters |= Q(**{f"{field}__iexact": valor})
+                    muestras = muestras.filter(q_filters)
                 # Para campos que son dropdowns, usar búsqueda exacta
-                if field in ['id_material', 'centro_procedencia', 'lugar_procedencia', 'estado_actual']:
+                elif field in ['id_material', 'centro_procedencia', 'lugar_procedencia', 'estado_actual']:
                     q_filters = Q()
                     for valor in valores:
                         if valor == 'null':

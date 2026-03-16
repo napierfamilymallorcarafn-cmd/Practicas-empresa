@@ -118,6 +118,12 @@ Lista de Muestras
   .multiselect-placeholder {
     color: #999;
   }
+  .filter-help {
+    display: block;
+    font-size: 12px;
+    color: #6c757d;
+    margin-top: 4px;
+  }
 </style>
 
 
@@ -133,10 +139,12 @@ Lista de Muestras
             <div class="filter-field">
                 <label>Id del individuo</label>
                 <input type="text" name="id_individuo">
+                <small class="filter-help">Puedes filtrar por lista de IDs separados por ';'</small>
             </div>
             <div class="filter-field">
                 <label>ID muestra</label>
                 <input type="text" name="nom_lab">
+                <small class="filter-help">Puedes filtrar por lista de IDs separados por ';'</small>
             </div>
             <div class="filter-field">
                 <label>Material</label>
