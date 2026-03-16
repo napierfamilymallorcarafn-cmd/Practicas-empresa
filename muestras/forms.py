@@ -18,6 +18,9 @@ class MuestraForm(forms.ModelForm):
             'fecha_extraccion': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
             'fecha_llegada': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
         }
+        labels = {
+            'nom_lab': 'ID muestra',
+        }
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

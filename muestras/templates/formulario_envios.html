@@ -56,7 +56,10 @@ Envio de Muestras
                 <tbody>
                 {% for muestra in muestras %}
                     <tr>
-                        <td>{{ muestra.nom_lab }}</td>
+                        <td>
+                            <input type="hidden" name="muestra_id" value="{{ muestra.id }}">
+                            {{ muestra.nom_lab }}
+                        </td>
 
                         <td>
                             {{ muestra.volumen_actual }}

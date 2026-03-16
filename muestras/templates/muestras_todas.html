@@ -356,8 +356,8 @@ Lista de Muestras
     </button>
     {%endif%}
     {% if perms.muestras.can_change_muestras_web %}
-    <button type="button" onclick="accionEnvio()" class="btn btn-success" id='envio-btn'>📦 Registrar envío</button>
-    <button type="button" onclick="accionCambioPosicion()" class="btn btn-success" id='cambio_posicion-btn'> 🔄 Cambio de posición</button>
+    <button type="submit" form="acciones-form" name="envio" value="true" class="btn btn-success" id='envio-btn'>📦 Registrar envío</button>
+    <button type="submit" form="acciones-form" name="cambio_posicion" value="true" class="btn btn-success" id='cambio_posicion-btn'> 🔄 Cambio de posición</button>
 {%endif%}
    </div>
 
@@ -403,7 +403,7 @@ Lista de Muestras
 </div>
 </div>
 
-<form action="{% url 'acciones_post' %}" method="post" id="acciones-form">
+<form action="{% url 'acciones_post' %}" method="post" id="acciones-form" novalidate>
   {%csrf_token%}
   <!-- Botones ocultos para acciones -->
   <button type="submit" value="true" name="estudio" style="display:none;"></button>
@@ -975,10 +975,7 @@ function actualizarEstadoBotones() {
   const contieneEstado = estado => estados.includes(estado);
 
   // ACCIONES PROHIBIDAS
-  const deshabilitarEnvio =
-        contieneEstado('DEST') ||
-        contieneEstado('ENV')  ||
-        contieneEstado('PENV');
+  const deshabilitarEnvio = false;
 
   const deshabilitarCambio =
         contieneEstado('DEST') ||
@@ -1095,23 +1092,6 @@ function enviarFormularioDestruccion() {
     accionConProgreso(formAcciones.action, formData, 'Destruyendo muestras...');
 }
 
-// ACCIONES DIRECTAS: ENVÍO Y CAMBIO DE POSICIÓN
-function _buildFormDataAccionSimple(nombreAccion, titulo) {
-    const formAcciones = document.getElementById('acciones-form');
-    if (!formAcciones) return;
-
-    const formData = new FormData();
-    const csrf = formAcciones.querySelector('input[name="csrfmiddlewaretoken"]');
-    if (csrf && csrf.value) formData.append('csrfmiddlewaretoken', csrf.value);
-
-    // Añadir IDs seleccionados (checkboxes + selección global)
-    document.querySelectorAll('input[type="checkbox"][name="muestra_id"]:checked, .global-hidden-muestra[name="muestra_id"]').forEach(function (el) {
-        formData.append('muestra_id', el.value);
-    });
-
-    formData.append(nombreAccion, 'true');
-    accionConProgreso(formAcciones.action, formData, titulo);
-}
 function accionEstudio() {
     const formAcciones = document.getElementById("acciones-form");
     if (!formAcciones) return;
@@ -1149,13 +1129,6 @@ function accionEstudio() {
     });
 
     formAcciones.submit();
-}
-
-function accionEnvio() {
-    _buildFormDataAccionSimple('envio', 'Preparando registro de envío...');
-}
-function accionCambioPosicion() {
-    _buildFormDataAccionSimple('cambio_posicion', 'Preparando cambio de posición...');
 }
 
 document.addEventListener("DOMContentLoaded", function() {

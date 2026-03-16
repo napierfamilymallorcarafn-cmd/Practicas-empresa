@@ -33,6 +33,10 @@ Importar archivo Excel
         </p>
 
         <p>
+            Si has seleccionado muestras en la pantalla general, el Excel se descargará con sus IDs rellenados.
+        </p>
+
+        <p>
             Si falta algún dato, la posición de la muestra no se actualizará.
         </p>
     </div>
@@ -41,11 +45,14 @@ Importar archivo Excel
     <div class="form-card">
         <h2>⬇️ Descargar plantilla</h2>
 
-        <a href="{% url 'descargar_plantilla_muestras' macro=4 %}"
-           download="plantilla_cambio_posicion.xlsx"
-           class="accion-btn accion-secundaria">
-            📥 Descargar plantilla de cambio de posición
-        </a>
+        <form method="post">
+            {% csrf_token %}
+            <button name="descargar_excel_cambio_posicion"
+                    type="submit"
+                    class="accion-btn accion-secundaria">
+                📥 Descargar plantilla de cambio de posición
+            </button>
+        </form>
     </div>
 
     <!-- FORMULARIO DE SUBIDA -->

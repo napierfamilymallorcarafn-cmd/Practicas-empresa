@@ -568,35 +568,11 @@ def acciones_post(request):
             # Se guardan las muestras seleccionadas en la sesión y se redirige al usuario a la agenda de envíos
             if 'muestras_envio' in request.session:
                 del request.session['muestras_envio']
-
-            # Permitir abrir el registro de envío sin selección previa
-            if not muestras_seleccionadas:
-                request.session['muestras_envio'] = []
-                return redirect('agenda')
-
             permitidas = []
-            bloqueadas = 0
-
             for mid in muestras_seleccionadas:
                 estado = Muestra.objects.filter(id=mid).values_list('estado_actual', flat=True).first()
-                # Estados que NO pueden ir a envío
-                if estado in ('DEST', 'ENV', 'PENV'):
-                    bloqueadas += 1
-                else:
+                if estado != 'DEST':
                     permitidas.append(mid)
-
-            if not permitidas:
-                messages.error(
-                    request,
-                    "No puedes registrar envíos para muestras en estado Destruida (DEST), Enviada (ENV) o Pendiente de envío (PENV)."
-                )
-                return redirect('muestras_todas')
-
-            if bloqueadas:
-                messages.warning(
-                    request,
-                    f"Se han excluido {bloqueadas} muestra(s) por estar en estado DEST, ENV o PENV."
-                )
 
             request.session['muestras_envio'] = permitidas
             return redirect('agenda')
@@ -664,6 +640,8 @@ def acciones_post(request):
                 del request.session['muestras_cambio_posicion']
             if not muestras_seleccionadas:
                 request.session['muestras_cambio_posicion'] = []
+            else:
+                request.session['muestras_cambio_posicion'] = muestras_seleccionadas
             return redirect('cambio_posicion')
         elif 'exportar_seleccionadas' in request.POST:
             # Exportar a Excel solo las muestras seleccionadas
@@ -1472,6 +1450,26 @@ def cambio_posicion(request):
         elif 'cancelar' in request.POST:
             messages.error(request,'Las muestras no se han cambiado de posición.')
             return redirect('muestras_todas')
+
+        elif 'descargar_excel_cambio_posicion' in request.POST:
+            # Descargar plantilla de cambio de posición con IDs precargados si hay selección
+            muestras = request.session.get('muestras_cambio_posicion', [])
+            plantilla_path = os.path.join(settings.BASE_DIR, 'datos_prueba', 'globalstaticfiles', 'plantilla_cambio_posicion.xlsx')
+            if not os.path.exists(plantilla_path):
+                return HttpResponse("La plantilla no se encuentra disponible.", status=404)
+            response = HttpResponse(content_type='application/ms-excel')
+            response['Content-Disposition'] = 'attachment; filename="plantilla_cambio_posicion.xlsx"'
+            wb = openpyxl.load_workbook(plantilla_path)
+            ws = wb.active
+            row_num = 2
+            for muestra_id in muestras:
+                sample = Muestra.objects.filter(id=muestra_id).first()
+                if not sample:
+                    continue
+                ws.cell(row_num, 1).value = str(sample.nom_lab)
+                row_num += 1
+            wb.save(response)
+            return response
         
         elif 'excel_file' in request.FILES:
             # Limpiar sesión residual de uploads anteriores
@@ -2712,6 +2710,7 @@ def estudios_todos(request):
         'contador_muestras': contador_total,
         'items_por_pagina': items_por_pagina,
         'busqueda': busqueda_general,
+        'estudios_ids_json': json.dumps(list(queryset.values_list('id', flat=True))),
         'opciones_referencias': opciones_referencias,
         'opciones_investigadores': opciones_investigadores,
         'field_names': field_names,
@@ -3526,20 +3525,26 @@ def registrar_envio(request,centro):
     if request.method=='POST':
         # Obtener los datos del formulario, guardados en la sesión y registrar los envíos
         centro_envio = agenda_envio.objects.get(id=centro)
-        muestras = request.session.get('muestras_envio', [])
+        muestras = request.POST.getlist('muestra_id')
         volumen_enviado_form = request.POST.getlist('volumen_enviado')
         concentracion_enviada_form = request.POST.getlist('concentracion_enviada')
         centro_destino_form = centro_envio.centro
         lugar_destino_form = centro_envio.lugar
-        iterar = 0
-        for muestra in muestras:
+        if not muestras:
+            messages.error(request, 'No hay muestras para registrar el envío.')
+            return redirect('formulario_envios', centro=centro)
+        if len(volumen_enviado_form) != len(muestras) or len(concentracion_enviada_form) != len(muestras):
+            messages.error(request, 'Faltan datos de volumen o concentración para alguna muestra.')
+            return redirect('formulario_envios', centro=centro)
+
+        for idx, muestra in enumerate(muestras):
             instancia_muestra = Muestra.objects.get(id=muestra)
             envio = Envio.objects.create(
                 muestra=instancia_muestra,
                 fecha_envio=timezone.now(),
-                volumen_enviado = volumen_enviado_form[iterar],
+                volumen_enviado = volumen_enviado_form[idx],
                 unidad_volumen_enviado = instancia_muestra.unidad_volumen,
-                concentracion_enviada = concentracion_enviada_form[iterar],
+                concentracion_enviada = concentracion_enviada_form[idx],
                 unidad_concentracion_enviada = instancia_muestra.unidad_concentracion,
                 centro_destino = centro_destino_form,
                 lugar_destino=lugar_destino_form,
@@ -3547,7 +3552,7 @@ def registrar_envio(request,centro):
             )
             envio.save()
             # Actualizar el estado, la posición y el volumen de la muestra tras el envío
-            if float(volumen_enviado_form[iterar]) >= instancia_muestra.volumen_actual:
+            if float(volumen_enviado_form[idx]) >= instancia_muestra.volumen_actual:
                 instancia_muestra.volumen_actual = 0
                 instancia_muestra.concentracion_actual = 0
                 instancia_muestra.estado_actual = 'ENV'
@@ -3562,10 +3567,9 @@ def registrar_envio(request,centro):
                     sub.vacia = True
                     sub.save()
             else:
-                instancia_muestra.volumen_actual -= float(volumen_enviado_form[iterar])
+                instancia_muestra.volumen_actual -= float(volumen_enviado_form[idx])
                 instancia_muestra.estado_actual = 'PENV'
                 instancia_muestra.save()
-            iterar += 1
         if 'muestras_envio' in request.session:
             del request.session['muestras_envio']
         return redirect('muestras_todas')
