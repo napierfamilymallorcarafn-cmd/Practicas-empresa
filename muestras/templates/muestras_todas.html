@@ -330,6 +330,7 @@ Lista de Muestras
     </form>
 </div>
 </div>
+</div>
 
 
 <div class="collapsible" style="border-radius: 8px; overflow: hidden; margin-top: 15px;">
@@ -347,12 +348,17 @@ Lista de Muestras
 
     {% endif %}
     {% if perms.muestras.can_change_estudios_web %}
+    <button type="button"
+            onclick="accionEstudio()"
+            class="btn btn-success"
+            id="estudio-btn">
+      &#129516; A&ntilde;adir al estudio
+    </button>
     {%endif%}
     {% if perms.muestras.can_change_muestras_web %}
     <button type="button" onclick="accionEnvio()" class="btn btn-success" id='envio-btn'>📦 Registrar envío</button>
     <button type="button" onclick="accionCambioPosicion()" class="btn btn-success" id='cambio_posicion-btn'> 🔄 Cambio de posición</button>
-    <button type="button" onclick="document.getElementById('acciones-form').elements['estudio'].click()" class="btn btn-success" id='estudio-btn'> 📁 Añadir al estudio</button>
-    {%endif%}
+{%endif%}
    </div>
 
     <div class="action-row">
@@ -394,6 +400,7 @@ Lista de Muestras
     </div>
  </div>
  
+</div>
 </div>
 
 <form action="{% url 'acciones_post' %}" method="post" id="acciones-form">
@@ -944,6 +951,9 @@ function actualizarEstadoBotones() {
   const btnDestruir = document.getElementById('destruir-btn');
   const btnEliminar = document.getElementById('eliminar-btn');
   const btnEstudio  = document.getElementById('estudio-btn');
+  if (btnEstudio) {
+    btnEstudio.disabled = (seleccionados.length === 0);
+  }
   const btnExportarSel = document.getElementById('exportar-seleccionadas-btn');
 
   if (seleccionados.length === 0) {
@@ -992,7 +1002,7 @@ function actualizarEstadoBotones() {
 
   // Acciones estándar que ya tenías
   if (btnEliminar) btnEliminar.disabled = false; // eliminar siempre es posible
-  if (btnEstudio) btnEstudio.disabled = false;
+  if (btnEstudio)     btnEstudio.disabled     = (seleccionados.length === 0);
   if (btnExportarSel) btnExportarSel.disabled = false;
 }
 
@@ -1062,7 +1072,7 @@ function enviarFormularioDestruccion() {
 
     const formAcciones = document.getElementById('acciones-form');
     const formData = new FormData();
-    const csrf = formAcciones ? formAcciones.querySelector('input[name=\"csrfmiddlewaretoken\"]') : null;
+    const csrf = formAcciones ? formAcciones.querySelector('input[name="csrfmiddlewaretoken"]') : null;
     if (csrf && csrf.value) formData.append('csrfmiddlewaretoken', csrf.value);
     formData.append('destruir', 'true');
 
@@ -1102,11 +1112,48 @@ function _buildFormDataAccionSimple(nombreAccion, titulo) {
     formData.append(nombreAccion, 'true');
     accionConProgreso(formAcciones.action, formData, titulo);
 }
+function accionEstudio() {
+    const formAcciones = document.getElementById("acciones-form");
+    if (!formAcciones) return;
+
+    const seleccionados = document.querySelectorAll('input[type="checkbox"][name="muestra_id"]:checked, .global-hidden-muestra[name="muestra_id"]');
+    if (!seleccionados.length) {
+        alert('Por favor selecciona al menos una muestra');
+        return;
+    }
+
+    // Limpiar ocultos previos para evitar duplicados
+    formAcciones.querySelectorAll('input[type="hidden"][data-accion="estudio-muestra"]').forEach(function(el) {
+        el.remove();
+    });
+
+    // Asegurar el flag de acción
+    let hiddenAccion = formAcciones.querySelector('input[type="hidden"][name="estudio"][data-accion="estudio-flag"]');
+    if (!hiddenAccion) {
+        hiddenAccion = document.createElement('input');
+        hiddenAccion.type = 'hidden';
+        hiddenAccion.name = 'estudio';
+        hiddenAccion.setAttribute('data-accion', 'estudio-flag');
+        formAcciones.appendChild(hiddenAccion);
+    }
+    hiddenAccion.value = 'true';
+
+    // Añadir IDs seleccionados (por si los checkboxes no están dentro del form)
+    seleccionados.forEach(function(el) {
+        const h = document.createElement('input');
+        h.type = 'hidden';
+        h.name = 'muestra_id';
+        h.value = el.value;
+        h.setAttribute('data-accion', 'estudio-muestra');
+        formAcciones.appendChild(h);
+    });
+
+    formAcciones.submit();
+}
 
 function accionEnvio() {
     _buildFormDataAccionSimple('envio', 'Preparando registro de envío...');
 }
-
 function accionCambioPosicion() {
     _buildFormDataAccionSimple('cambio_posicion', 'Preparando cambio de posición...');
 }
@@ -1356,3 +1403,8 @@ document.addEventListener('DOMContentLoaded', function() {
   @keyframes progresoSpin { to { transform: rotate(360deg); } }
 </style>
 {% endblock %}
+
+
+
+
+
