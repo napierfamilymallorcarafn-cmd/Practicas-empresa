@@ -53,32 +53,29 @@ Agenda
             <table class="styled-table">
                 <thead>
                     <tr>
-                        <th>✓</th>
-                        <th>Editar</th>
+                        <th></th>
                         <th>Centro</th>
                         <th>Lugar</th>
                         <th>Dirección</th>
                         <th>Contacto</th>
                         <th>Teléfono</th>
-                        <th>Enviar</th>
                     </tr>
                 </thead>
 
                 <tbody>
                 {% for contacto in agenda %}
                     <tr>
-                        <td>
+                        <td style="display: flex; justify-content: space-around;">
                             <input type="checkbox"
                                    name="ids_centro"
                                    value="{{ contacto.id }}"
                                    onchange="actualizarBotonEliminar()">
-                        </td>
-
-                        <td>
                             <a href="agenda/editar/{{ contacto.id }}"
-                               class="chip-detalle">
-                                ✏️ Editar
-                            </a>
+                               class="chip-detalle" title="Editar"
+                               style="padding: 2px 5px;">✏️</a>
+                            <a href="agenda/{{ contacto.id }}/envio"
+                               class="chip-detalle" title="Enviar"
+                               style="padding: 2px 5px;">📤</a>
                         </td>
 
                         <td>{{ contacto.centro }}</td>
@@ -86,14 +83,6 @@ Agenda
                         <td class="wrap-text">{{ contacto.direccion }}</td>
                         <td>{{ contacto.persona_contacto }}</td>
                         <td>{{ contacto.telefono_contacto }}</td>
-
-                        <td>
-                            <a href="agenda/{{ contacto.id }}/envio"
-                               class="accion-btn accion-secundaria"
-                               style="height:32px; font-size:13px;">
-                                📤 Enviar
-                            </a>
-                        </td>
                     </tr>
                 {% endfor %}
                 </tbody>
